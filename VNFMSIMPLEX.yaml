@@ -1,0 +1,160 @@
+# ======= The structure of HOT - Heat Orchestration Template =======
+ # Heat Version
+ # Descrption
+ # Parameters
+ # Resources
+ # Output
+# ===================================================================
+
+# ================== How to Run/Use this file ===============
+#
+#  source openrc.sh  <== this file can be downloaded from the dashboard
+#
+#  NET_ID=$(nova net-list | awk '/ ext-net / { print $2 }')  <== where 'ext-net' is name of your external network
+#  SEC_ID=$(nova secgroup-list | awk '/ default / { print $2 }')  <== where 'default' is name of the security group
+#
+#  heat stack-create -f vnfm_heat.yaml -P image_id=vnfm_image_21apr2016 -P public_net=$NET_ID -P sec_group_id=$SEC_ID Vnf_Manager
+#
+# ===========================================================
+
+heat_template_version: 2015-04-30
+
+description: VNF Manager Heat template to create 1 VNFM manager.
+
+parameters:
+  name:
+    type: string
+    description: Name of the Instance
+    default: "VNFM1" 
+
+  key:
+    type: string
+    description: Name of the key 
+    default: "vnfm_key"
+
+  flavor:
+    type: string
+    description: flavor of the VNF manager
+    default: "VNFM"
+    
+  image_id:
+    type: string
+    description: Image ID of the VNF manager
+    default: "cVNFM_S17"
+
+  sec_group_id:
+    type: string
+    description: ID of the security group
+    default: "default"
+
+  public_net:
+    type: string
+    description: External network Id
+    default : "mgt0-ext-ssn"
+
+  availability_zone:
+    type: string
+    default : "cinder"
+
+  private_network:
+    type: string
+    description: Internal network Id
+    default : "mgt0-int-ssn"
+
+  private_network_gateway:
+    type: string
+    description: gateway for the Internal network
+    default : "192.168.1.1"
+
+  private_network_cidr:
+    type: string
+    description: Internal network cidr
+    default : "192.168.1.0/24"
+    
+  private_network_ip:
+    type: string
+    description: Internal network ip
+    default : "192.168.1.60"
+    
+
+
+#  fixed_floating_ip:
+#    type: string
+#    default: "172.23.235.3"
+
+
+resources:
+  # This key pair will be bound to the stack lifecycle.
+  vnfm_key_pair:
+    # http://docs.openstack.org/developer/heat/template_guide/openstack.html#OS::Nova::KeyPair
+    type: OS::Nova::KeyPair
+    properties:
+      name: { get_param: key }
+      save_private_key: True
+
+  private_net:
+    type: OS::Neutron::Net
+    #description: Internal network
+    properties:
+      name: { get_param: private_network }
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    #description: Internal subnet
+    properties:
+      network_id: { get_resource: private_net }
+      cidr: { get_param: private_network_cidr }
+      gateway_ip: { get_param: private_network_gateway }
+
+  router:
+    type: OS::Neutron::Router
+    #description: Router to connect the private_net and the public_net
+    properties:
+      external_gateway_info:
+        network: { get_param: public_net }
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router}
+      subnet_id: { get_resource: private_subnet }
+
+  server_port:
+      type: OS::Neutron::Port
+      properties:
+        network_id: { get_resource: private_net }
+        security_groups: [ get_param: sec_group_id ]
+        fixed_ips:
+          - subnet_id: { get_resource: private_subnet }
+            ip_address: { get_param: private_network_ip }
+
+  server_floating_ip:
+      type: OS::Neutron::FloatingIP
+      properties:
+        floating_network_id: { get_param: public_net }
+        port_id: { get_resource: server_port }
+
+  server:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: name }
+      key_name: { get_resource: vnfm_key_pair }
+      image: { get_param: image_id }
+      availability_zone: { get_param: availability_zone }
+      flavor: { get_param: flavor }
+      networks:
+      - port: { get_resource: server_port }
+
+
+
+outputs:
+  VnfmVM_private_ip:
+    description: Private IP Address of the VNF Manager
+    value: { get_attr: [ server, first_address ] }
+  VnfmVM_public_ip:
+    description: Floating IP Address of the VNF Manager
+    value: { get_attr: [ server_floating_ip, floating_ip_address ] }
+  private_key:
+    description: The private key to access instance (you need to format to get work
+      properly)
+    value:
+      get_attr: [vnfm_key_pair, private_key]

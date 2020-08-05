@@ -1,0 +1,947 @@
+package SonusQA::MGW9000;
+
+#########################################################################################################
+
+=head1 COPYRIGHT
+
+                              Sonus Networks, Inc.
+                         Confidential and Proprietary.
+
+                     Copyright (c) 2010 Sonus Networks
+                              All Rights Reserved
+Use of copyright notice does not imply publication.
+This document contains Confidential Information Trade Secrets, or both which
+are the property of Sonus Networks. This document and the information it
+contains may not be used disseminated or otherwise disclosed without prior
+written consent of Sonus Networks.
+
+=head1 DATE
+
+2010-10-19
+
+=cut
+
+#########################################################################################################
+
+=pod
+
+=head1 NAME
+
+SonusQA::MGW9000 - Perl module for Sonus Networks MGW 9000 interaction
+
+=head1 SYNOPSIS
+
+  use ATS;  # This is the base class for Automated Testing Structure
+  
+  my $MgwObj = SonusQA::MGW9000->new(
+                              #REQUIRED PARAMETERS
+                              -OBJ_HOST => '<host name | IP Adress>',
+                              -OBJ_USER => '<cli user name - usually admin>',
+                              -OBJ_PASSWORD => '<cli user password>',
+                              -OBJ_COMMTYPE => "<TELNET | SSH>",
+                              
+                              # OPTIONAL PARAMETERS:
+                              
+                              # NODE RESET FLAGS:
+                              -RESET_NODE => <0|1>,      # Default is 0 or OFF
+                              -NVSDISABLED => <0|1>,     # Default is 0 or OFF
+                              
+                              # XML LIBRARY IGNORE FLAGS:
+                              -IGNOREXML => <0|1>,     # Default is 0 or OFF
+                          );
+                               
+  PARAMETER DESCRIPTIONS:
+    OBJ_HOST
+      The connection address for this object.  Typically this will be a resolvable (DNS) host name or a specific IP Address.
+    OBJ_USER
+      The user name or ID that is used to 'login' to the device. 
+    OBJ_PASSWORD
+      The user password that is used to 'login' to the device. 
+    OBJ_COMMTYPE
+      The session or connection type that will be established.  
+      
+  FLAGS:
+    RESET_NODE
+      BOOLEAN FLAG that is used to determine if the node should be 'reset' on destruction
+      This FLAG is specific to MGW9000, and it only applies to this object.
+    NVSDISABLED
+      BOOLEAN FLAG that is used to determine if NVS PARAMETERS should be set to DISABLED or left alone during destruction
+      This FLAG is specific to MGW9000, and it only applies to this object
+      
+    IGNOREXML
+      BOOLEAN FLAG that is used to determine whether or not to attempt the load of XML Libraries for this object.
+      This FLAG is inherited from SonusQA::Base
+
+=head1 DESCRIPTION
+
+    This module provides an interface for the MGW9000 switch.
+    This module is a stub, of which most functionality is derived from and XML library system.
+    Users are not required to use the XML library system, it can be by-passed.
+   
+    This module extends SonusQA::Base and inherites SonusQA::MGW9000::MGW9000HELPER and SonusQA::MGW9000::MGW9000LTT
+
+=head1 AUTHORS
+
+    See Inline documentation for contributors.
+
+=head1 REQUIRES
+
+  Perl5.8.6, Log::Log4perl, POSIX, File::Basename, Module::Locate, XML::Simple, Storable, Data::Dumper, SonusQA::Utils,
+
+=head1 ISA
+
+    SonusQA::Base
+    SonusQA::MGW9000::MGW9000HELPER
+    SonusQA::MGW9000::MGW9000LTT
+
+=head2 SUB-ROUTINES
+
+    doInitialization();
+    closeConn();
+    setSystem();
+    execCmd();
+    process4000cmd();
+    execCliCmd();
+    execFuncCall();
+    help();
+    usage();
+    manhelp();
+    configureMgw9000FromTemplate();
+    AUTOLOAD();
+
+=cut
+
+#########################################################################################################
+
+use SonusQA::Utils qw(:all);
+use strict;
+use Log::Log4perl qw(get_logger :easy );
+use Data::Dumper;
+use POSIX qw(strftime);
+use Module::Locate qw /locate/;
+use File::Basename;
+use XML::Simple;
+use Storable;
+
+require SonusQA::MGW9000::MGW9000HELPER;
+require SonusQA::MGW9000::MGW9000LTT;
+
+our $VERSION = "1.0";
+use vars qw($self);
+our @ISA = qw(SonusQA::Base SonusQA::MGW9000::MGW9000HELPER SonusQA::MGW9000::MGW9000LTT);
+
+#########################################################################################################
+
+=pod
+
+=head3 SonusQA::MGW9000::doInitialization()
+
+  Base module over-ride.  Object session specific initialization.  Object session initialization function that is called automatically,
+  use to set Object specific flags, paths, and prompts.
+  This routine discovers correct path for XML library loading.  It uses the package location for forumulation of XML path.
+
+  This routine sets defaults for:  RESET_NODE, NVSDISABLED, IGNOREXML
+  
+  This routine is automatically called prior to SESSION creation, and parameter or flag parsing.
+
+=over 
+
+=item Arguments
+
+  NONE 
+
+=item Returns
+
+  NOTHING   
+
+=back
+
+=cut
+
+#################################################
+sub doInitialization {
+#################################################
+    my( $self, %args ) = @_;
+    my $subName = 'doInitialization()' ;
+    my $logger  = Log::Log4perl->get_logger(__PACKAGE__ . ".$subName");
+    $logger->debug("--> Entered Sub");
+
+    $self->{COMMTYPES} = ["TELNET", "SSH"];
+    $self->{TYPE}      = __PACKAGE__;
+    $self->{conn}      = undef;
+    $self->{PROMPT}    = '/.*[\$%#\}\|\>].*$/';
+    $self->{DEFAULTPROMPT} = $self->{PROMPT}; #used in SonusQA::Base::reconnect() to set the PROMPT back to DEFAULTPROMPT (TOOLS-4296)
+    $self->{VERSION}   = "UNKNOWN";
+  
+    $self->{LOCATION}           = locate __PACKAGE__;
+    my ($name,$path,$suffix)    = fileparse($self->{LOCATION},"\.pm");
+    $self->{DIRECTORY_LOCATION} = $path;
+    $self->{XMLLIBS}            = $self->{DIRECTORY_LOCATION} . "xml";
+  
+    #Some flags for performing logical operations.
+    $self->{RESET_NODE}  = 0;
+    $self->{NVSDISABLED} = 0;
+  
+    # Flag for getCDRmethod (MGW9000HELPER.pm) to check for
+    # existance of DSI object
+    $self->{dsiObj} = undef;
+  
+    # SFTP session for copying log files, one per test suite
+    $self->{sftp_session} = undef;
+
+    $logger->debug(" Initialization Complete");
+    $logger->debug("<-- Leaving Sub [1]");
+}
+
+#########################################################################################################
+
+=pod
+
+=head3 SonusQA::MGW9000::closeConn()
+
+  This routine is called by the object destructor.  It closes the communications (TELNET|SSH) session.
+  This is done by simply calling close() on the session object
+
+=over
+
+=item Arguments
+
+  NONE 
+
+=item Returns
+
+  NOTHING   
+
+=back
+
+=cut
+
+#################################################
+sub closeConn {
+#################################################
+    my ($self) = @_;
+    my $subName = 'closeConn()' ;
+    my $logger  = Log::Log4perl->get_logger(__PACKAGE__ . ".$subName");
+    $logger->debug("--> Entered Sub");
+
+    if ($self->{conn}) {
+        $self->{conn}->close;
+    }
+
+    if ($self->{sftp_session}) {
+        #$self->{sftp_session}->close;
+        $self->{sftp_session} = undef;
+    }    
+
+    $logger->debug("<-- Leaving Sub [1]");
+}
+
+#########################################################################################################
+
+=pod
+
+=head3 SonusQA::MGW9000::setSystem()
+
+  Base module over-ride.  This routine is responsible to completeing the connection to the object.
+  It performs some basic operations on the MGW9000 to enable a more efficient automation environment.
+  
+  Some of the items or actions is it performing:
+    Sets MGW9000 PROMPT to AUTOMATION#
+    Sets NO_PAGE to 1
+    Sets NO_CONFIRM to 1
+    
+    Gets Product Version  - calls MGW9000HELPER function getVersion()
+    Gets Product Type     - calls MGW9000HELPER function getProductType
+  
+  If the IGNOREXML flag is false, this routing will also call the SonusQA::Base function: loadXMLLibrary
+  of which will attempt to load the correct standard XML library for this object type and version.
+
+=over
+
+=item Arguments
+
+  NONE 
+
+=item Returns
+
+  NOTHING   
+
+=back
+
+=cut
+
+#################################################
+sub setSystem(){
+#################################################
+    my($self)=@_;
+    my $subName = 'setSystem()' ;
+    my $logger  = Log::Log4perl->get_logger(__PACKAGE__ . ".$subName");
+    $logger->debug("--> Entered Sub");
+
+    my($cmd,$prompt, $prevPrompt, @results);
+    my $xmlconfig = "";
+    $cmd = 'set PROMPT "AUTOMATION#"';
+    $self->{conn}->last_prompt("");
+    $prevPrompt = $self->{conn}->prompt('/AUTOMATION#$/');
+    $logger->info(" SET MGW9000 PROMPT TO: " . $self->{conn}->prompt . " FROM: $prevPrompt");
+    @results = $self->{conn}->cmd($cmd);
+    # Initialise PRODUCTTYPE to blank string as it is checked in execCmd BEFORE
+    # we get the product type via getProductType() function
+    $self->{PRODUCTTYPE} = "";
+    $logger->info(" SET MGW9000 PROMPT TO: " . $self->{conn}->last_prompt);
+
+    $cmd = 'set NO_PAGE 1';
+    @results = $self->execCmd($cmd);
+    $logger->info(" SET NO_PAGE TO 1");
+    $cmd = 'set NO_CONFIRM 1';
+    @results = $self->execCmd($cmd);
+    $logger->info(" SET NO_CONFIRM TO 1");
+
+    $self->getVersion();
+    $self->getProductType();
+  
+    &logMetaData('DUTINFO',"EMSCLI DUT TYPE: ". $self->{PRODUCTTYPE});
+    &logMetaData('DUTINFO',"EMSCLI DUT VERSION: ". $self->{VERSION});
+
+
+    unless( $self->{IGNOREXML} ) {
+        # Pawel, 12/27/2007
+        #
+        # Load both the 9000 and 4000 XML files:
+        #    $self->{funcref}  - for the tested product
+        #    $self->{funcref2} - for the other product
+        #
+        # Note: other references may need to be added (and execFuncCall should be updated accordingly)
+  
+        my $other_product = $self->{PRODUCTTYPE} =~ m/gsx40/ ? "gsx9000" : "gsx4000";
+
+        $xmlconfig = sprintf('%s/%s/cli/%s.xml', $self->{XMLLIBS}, $other_product, $self->{VERSION});
+        $self->loadXMLLibrary($xmlconfig, 1); # Here: 1 means we don't exit on failure
+        $self->{funcref2} = $self->{funcref};
+    
+        $xmlconfig = sprintf('%s/%s/cli/%s.xml', $self->{XMLLIBS}, $self->{PRODUCTTYPE}, $self->{VERSION});
+        $self->loadXMLLibrary($xmlconfig);
+        &error(__PACKAGE__ . ".setSystem XML CONFIGURATION ERROR") if !$self->{LIBLOADED};
+    }
+
+    $logger->debug("<-- Leaving Sub [1]");
+    return 1;
+}
+
+#########################################################################################################
+
+=pod
+
+=head3 SonusQA::MGW9000::execCmd()
+
+  This routine is responsible for executing commands.  Commands can enter this routine via two methods:
+    1. Via a straight call (if script is not using XML libraries, this would be the perferred method in this instance)
+    2. Via an execFuncCall call, in which the XML libraries are used to generate a correctly sequence command.
+  It performs some basic operations on the results set to attempt verification of an error.
+  
+=over
+
+=item Arguments
+
+  cmd <Scalar>
+  A string of command parameters and values
+
+=item Returns
+
+  Array
+  This return will be an empty array if:
+    1. The command executes successfully (no error statement is return)
+    2. And potentially empty if the command times out (session is lost)
+  
+  The assumption is made, that if a command returns directly to the prompt, nothing has gone wrong.
+  The MGW9000 product done not return a 'success' message.
+
+=item Example(s):
+
+  &$MgwObj->execCmd("SHOW INVENTORY SHELF 1 SUMMARY");
+
+=back
+
+=cut
+
+#################################################
+sub execCmd {  
+#################################################
+    my ($self,$cmd)=@_;
+    my $subName = 'execCmd()' ;
+    my $logger  = Log::Log4perl->get_logger(__PACKAGE__ . ".$subName");
+    #$logger->debug("--> Entered Sub");
+
+    my(@cmdResults,$timestamp);
+    @cmdResults = ();
+    $self->{CMDRESULTS} = [];
+
+    # discard all data in object's input buffer
+    $self->{conn}->buffer_empty;
+
+    # Pawel
+    if ($self->{PRODUCTTYPE} =~ m/gsx40/) {
+        $cmd = $self->process4000cmd($cmd);
+    }
+
+    $logger->info(" ISSUING CMD: $cmd");
+
+    $cmd =~ s/Sonus_Null//gi;  # Just in case 
+    $timestamp = $self->getTime();
+    unless ( @cmdResults = $self->{conn}->cmd(
+                                               String =>$cmd,
+                                               Timeout=> $self->{DEFAULTTIMEOUT},
+                                           ) ) {
+        # remove empty elements or spaces in the array
+        @cmdResults = grep /\S/, @cmdResults;
+        push(@{$self->{CMDRESULTS}},@cmdResults);
+        ## Do not error for CLI restart and switchover
+        if(($cmd !~ m/node restart/i) && ($cmd !~ m/[mg]ns(\d*-?\d*) (switchover|revert)/i)){
+            # Section for commnad execution error handling - CLI hangs, etc can be noted here.
+            $logger->warn(" *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*");
+            $logger->warn(" CLI ERROR DETECTED, CMD ISSUED WAS:");
+            $logger->warn(" $cmd");
+            $logger->warn(" CMD RESULTS:");
+            chomp(@cmdResults);
+            map { $logger->warn(__PACKAGE__ . ".$subName:\t\t$_") } @cmdResults;
+            $logger->warn(" *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*");
+            push(@cmdResults, "error: ATS ERROR: Failed to execute command '$cmd'");
+            #&error(__PACKAGE__ . ".execCmd CLI CMD ERROR - EXITING");
+        }
+    };
+
+    chomp(@cmdResults);
+    @cmdResults = grep /\S/, @cmdResults; # remove empty elements or spaces in the array
+    push(@{$self->{CMDRESULTS}},@cmdResults);
+    push(@{$self->{HISTORY}},"$timestamp :: $cmd");
+
+    #$logger->debug("<-- Leaving Sub");
+    return @cmdResults;
+}
+
+#########################################################################################################
+
+
+#################################################
+sub process4000cmd(){
+#################################################
+    my ($self,$command)=@_;
+    my $subName = 'process4000cmd()' ;
+    my $logger  = Log::Log4perl->get_logger(__PACKAGE__ . ".$subName");
+    $logger->warn("--> Entered Sub");
+
+    $command =~ s/slot shelf \d+ slot/slot/ig;
+    $command =~ s/shelf \d+//ig;
+
+    my @stripslot = ("announcement segment", "resource pad");
+    foreach (@stripslot){
+        if($command =~ /$_/){
+            $command =~ s/slot \d+//ig;
+        }
+    }
+
+    $logger->debug("<-- Leaving Sub:  \'$command\'");
+    return $command;
+}
+
+
+#########################################################################################################
+
+=pod
+
+=head3 SonusQA::MGW9000::execCliCmd($cmd)
+
+This routine is wrapper around execCmd which returns a scalar value on execution instead of the original output of the command
+
+=over
+
+=item Arguments
+
+  cmd <Scalar>
+  A string of command parameters and values
+
+=item Returns
+
+  Boolean 
+  This will return 1 is the command comes back to the prompt immediately.
+  A cursory check for the pattern "error" within the results array will cause a 0 (false) to come back.
+  
+  The assumption is made, that if a command returns directly to the prompt, nothing has gone wrong.
+  The MGW9000 product done not return a 'success' message.
+
+=item Example(s):
+
+  &$MgwObj->execCliCmd("SHOW INVENTORY SHELF 1 SUMMARY");
+
+=back
+
+=cut
+
+#################################################
+sub execCliCmd {
+#################################################
+    my ($self,$cmd) = @_;
+    my $subName     = 'execCliCmd()';
+    my $logger  = Log::Log4perl->get_logger(__PACKAGE__ . ".$subName");
+    $logger->debug("--> Entered Sub");
+
+    my @result = $self->execCmd( $cmd );
+
+    foreach ( @result ) {
+        chomp;
+        if ( /^error/ ) {
+            $logger->error(" CLI CMD ERROR:--\n@result");
+            $logger->debug("<-- Leaving Sub[0]");
+            return 0;
+        }
+    }
+    $logger->debug(" SUCCESS \'$cmd\'");
+
+    $logger->debug("<-- Leaving Sub[1]");
+    return 1;
+}
+
+
+
+
+#########################################################################################################
+
+=pod
+
+=head3 SonusQA::MGW9000::execFuncCall(<func>, {<anonymous hash})
+
+  This routine is responsible for executing commands that are to be generated and verified by the XML libraries.
+  The XML libraries are generated from the MGW9000 build EMS commands file.  The process of generating these files is manual,
+  and may be problematic.  It may be best to simply call the command using the execCmd functionality.
+  
+  This routine will verify that the actual command exists within the XML libraries.
+  This routine will verify that the keys provided via the arguments are valid keys.  If the keys are not valid, the function
+  will simply drop the keys, and move forward.  It will also order the keys appropriately.
+  
+=over
+
+=item Argument
+
+  func <Scalar>
+  A string that represents the standard function ID from within the XML files.
+  
+  anonymous hash <Hash>
+  An anonymous hash of key value pairs (order is not required)
+ 
+=item Returns
+
+  Boolean 
+  This will return 1 is the command comes back to the prompt immediately.
+  A cursory check for the pattern "error" within the results array will cause a 0 (false) to come back.
+
+=item Example(s):
+
+  &$MgwObj->execFuncCall(
+                          "objFunctionName",
+                          {
+                              "command_parameter1" => "parameter_value1",
+                              "command_parameter2" => "parameter_value2",
+                          }
+                        );
+
+=back
+
+=cut
+
+#################################################
+sub execFuncCall (){
+#################################################
+    my ($self,$func,$mKeyVals)=@_;
+    my $subName     = 'execFuncCall()';
+    my $logger  = Log::Log4perl->get_logger(__PACKAGE__ . ".$subName");
+    $logger->debug("--> Entered Sub");
+
+    if(!$self->{LIBLOADED} || $self->{INGOREXML} ){
+        $logger->warn(" INGOREXML FLAG IS ON OR XML LIBRARY IS NOT LOADED.  execFuncCall NOT AVAILABLE");
+        return 0;
+    }
+
+    my(@cmdResults,$cmd,$flag,$key,$value,$cmdTmp, $funcCp, @stripWords);
+    my @manKeys = (); my @optKeys = (); my @stdKeys = ();
+    
+    # Check for product type - if this is a gsx4000 - an attempt will be made to remove any reference to 'shelf' from the func reference.
+    # Add any key words to strip out of func name below (inside of @stripWords)
+    $logger->debug(" MOVING PROVIDED KEYS TO LOWER CASE");
+    if( keys %{$mKeyVals}) {
+        while( my($tmpKey, $tmpVal) = each(%$mKeyVals) ) {
+            $mKeyVals->{lc $tmpKey} = delete $mKeyVals->{$tmpKey};
+        }
+    }
+
+    # Pawel, checking all XML commands files
+    if ( $self->{funcref}->{function}->{$func} ) {
+        $logger->debug(" VERIFIED METHOD EXISTS IN $self->{PRODUCTTYPE} COMMANDS XML FILE: $func");
+        $funcCp = ${\$self->{funcref}->{function}->{$func}};
+    }
+    elsif ( $self->{funcref2}->{function}->{$func} ) {
+        $logger->debug(" VERIFIED METHOD EXISTS IN a non $self->{PRODUCTTYPE} COMMANDS XML FILE: $func");
+        $funcCp = ${\$self->{funcref2}->{function}->{$func}};
+    }
+    else {
+         &error(" METHOD [$func] DOES NOT EXIST IN COMMANDS XML FILE.");
+    }
+	
+    if( $funcCp->{mandatorykeys} ) {
+        @manKeys = split(",",$funcCp->{mandatorykeys});
+        @manKeys = map lc, @manKeys;
+    }
+    if( $funcCp->{optionalkeys} ) {
+        @optKeys = split(",",$funcCp->{optionalkeys});
+        @optKeys = map lc, @optKeys;
+    }
+    if( $funcCp->{standalonekeys} ) {
+        @stdKeys = split(",",$funcCp->{standalonekeys});
+        @stdKeys = map lc, @stdKeys;
+    }
+
+    $cmd = "";
+    # Validate Mandatory Keys:
+    if( $#manKeys > 0 ) {
+        foreach( @manKeys ) {
+            if( !defined($mKeyVals->{$_}) ) {
+                &error("  MANADTORY KEY [$_] MISSING FOR METHOD [$func].");
+            }
+        }
+    }
+
+    # Validate Optional Keys:  little bit harder:
+    foreach ( sort {$a<=>$b} keys (%{$funcCp->{param}}) ) {
+        my $key = $funcCp->{param}->{$_}->{key};
+        $key =~ tr/A-Z/a-z/;
+        my $cmdkey       = $funcCp->{param}->{$_}->{cmdkey};
+        my $defaultvalue = $funcCp->{param}->{$_}->{defaultvalue};
+        my $requires     = $funcCp->{param}->{$_}->{requires};
+        my $option       = $funcCp->{param}->{$_}->{option};
+        my $includekey   = $funcCp->{param}->{$_}->{includeKey};
+        my $standalone   = $funcCp->{param}->{$_}->{standalone};
+
+        if( defined($mKeyVals->{$key}) ) {
+            $funcCp->{param}->{$_}->{defaultvalue} = $mKeyVals->{$key};
+            
+            # Verify hierarchy of required keys for parameter
+            # First key is always required and standalone.                                
+            while($requires > 0) {
+                if( !$funcCp->{param}->{$requires}->{standalone} ) {
+                    my $rkey = $funcCp->{param}->{$requires}->{key};
+                    $rkey =~ tr/A-Z/a-z/;
+
+                    if( defined($mKeyVals->{$rkey}) ) {
+                        #KEY REQUIREMENT IS MET
+                        $funcCp->{param}->{$requires}->{picked} = 1;
+                    }
+                    else{
+                        &error(" KEY DEPENDANCY [$rkey] IS NOT MET.  KEY REQUIRING IS [$key]");
+                    }
+                }
+                # REQUIREMENT FOR KEY IS STANDALONE\n";
+                else{
+                    $funcCp->{param}->{$requires}->{picked} = 1;
+                }
+
+                if( defined($funcCp->{param}->{$requires}->{picked}) ) {
+                    $logger->debug(" $funcCp->{param}->{$requires}->{key} IS PICKED");
+                }
+                $requires = $funcCp->{param}->{$requires}->{requires};
+            }
+            
+            # If this is reached, then the main key should be picked also.
+            $funcCp->{param}->{$_}->{picked} = 1;
+            $logger->debug(" $funcCp->{param}->{$_}->{key} IS PICKED");
+        }
+    }
+    
+    $funcCp = $funcCp;
+    foreach ( sort {$a<=>$b} keys (%{$funcCp->{param}}) ) {
+        my $key = $funcCp->{param}->{$_}->{key};
+        $key =~ tr/A-Z/a-z/;
+        my $cmdkey       = $funcCp->{param}->{$_}->{cmdkey};
+        my $defaultvalue = $funcCp->{param}->{$_}->{defaultvalue};
+        my $requires     = $funcCp->{param}->{$_}->{requires};
+        my $option       = $funcCp->{param}->{$_}->{option};
+        my $includekey   = $funcCp->{param}->{$_}->{includeKey};
+        my $standalone   = $funcCp->{param}->{$_}->{standalone};	    
+        
+        if( ($option =~ /^R$/i) &&
+            ($standalone) && 
+            !defined($funcCp->{param}->{$_}->{picked}) ) {
+            $cmd .= " $cmdkey";
+        }
+        
+        if( defined($funcCp->{param}->{$_}->{picked}) ) {
+            $cmd .= ($includekey) ? (defined($mKeyVals->{$key}) ? " $cmdkey $mKeyVals->{$key}" : " $cmdkey") : " $mKeyVals->{$key}";
+            delete $funcCp->{param}->{$_}->{picked};
+        }
+    }
+   
+    $cmd =~ s/^\s+//g;
+    $cmd =~ s/Sonus_Null//gi;  # Just in case 
+	  
+    $logger->debug(" FORMULATED COMMAND: $cmd");
+    $flag = 1; # Assume cmd will work
+    
+    @cmdResults = $self->execCmd($cmd);
+
+    foreach(@cmdResults) {
+        if( m/^error/i ) {
+            $logger->warn("  CMD RESULT: $_");
+            if( $self->{CMDERRORFLAG} ) {
+                $logger->warn(" CMDERROR FLAG IS POSITIVE - CALLING ERROR");
+                &error(" CMD FAILURE: $cmd");
+            }
+            $flag = 0;
+            next;
+        }
+    }
+
+    $logger->debug("<-- Leaving Sub[1]");
+    return $flag;
+}
+
+
+
+
+#################################################
+sub help(){
+#################################################
+    my $cmd="pod2text " . locate __PACKAGE__;
+    print `$cmd`;
+}
+
+#################################################
+sub usage(){
+#################################################
+    my $cmd="pod2usage " . locate __PACKAGE__ ;
+    print `$cmd`;
+}
+
+#################################################
+sub manhelp(){
+#################################################
+    eval {
+        require Pod::Help;
+        Pod::Help->help(__PACKAGE__);
+    };
+    if ($@) {
+        my $cmd="pod2text " . locate __PACKAGE__ ;
+        print `$cmd`;
+    }
+}
+
+#########################################################################################################
+
+=head2 C< configureMgw9000FromTemplate >
+
+Iterate through template files for tokens, 
+replace all occurrences of the tokens with the values in the supplied hash (i.e. data from TMS).
+For each template file using MGW9000 session do the provisioning by sourcing the file from SonusNFS server.
+
+Arguments :
+
+ - file list (array reference)
+      specify the list of file names of template (containing MGW9000 commands)
+ - replacement map (hash reference)
+      specify the string to search for in the file
+ - Path Information. Optional. Set as 1, for not to use "../C/" for sourcing TCL file
+
+Return Values :
+
+ - 0 configuration of sgx4000 using template files failed.
+ - 1 configuration of sgx4000 using template files successful.
+
+Example :
+    my @file_list = (
+                        "QATEST/MGW9000/mgw9000ConfigWanTesting.template",
+                    );
+
+    my %replacement_map = ( 
+        # MGW9000 - related tokens
+        'MGW9000MNS11IP' => $TESTBED{'mgw9000:1:ce0:hash'}->{MGMTNIF}->{1}->{IP},
+        'MGW9000MNS12IP' => $TESTBED{'mgw9000:1:ce0:hash'}->{MGMTNIF}->{2}->{IP},
+        'MGW9000MNS21IP' => $TESTBED{'mgw9000:1:ce0:hash'}->{MGMTNIF}->{3}->{IP},
+        'MGW9000MNS22IP' => $TESTBED{'mgw9000:1:ce0:hash'}->{MGMTNIF}->{4}->{IP},
+    
+        # PSX - related tokens
+        'PSX0IP1'  => $TESTBED{'psx:1:ce0:hash'}->{NODE}->{1}->{IP},
+        'PSX0NAME' => $TESTBED{'psx:1:ce0:hash'}->{NODE}->{1}->{NAME},
+    
+        # SGX4000 - related tokens
+        'CE0SHORTNAME' => $TESTBED{'sgx4000:1:ce0:hash'}->{CE}->{1}->{HOSTNAME},
+        'CE1SHORTNAME' => $TESTBED{'sgx4000:1:ce1:hash'}->{CE}->{1}->{HOSTNAME},
+        'CE0LONGNAME' => "$TESTBED{'sgx4000:1:ce0:hash'}->{CE}->{1}->{HOSTNAME}",
+        'CE1LONGNAME' => "$TESTBED{'sgx4000:1:ce1:hash'}->{CE}->{1}->{HOSTNAME}",
+        'CE0EXT0IP' => $TESTBED{'sgx4000:1:ce0:hash'}->{EXT_SIG_NIF}->{1}->{IP},
+        'CE0EXT1IP' => $TESTBED{'sgx4000:1:ce0:hash'}->{EXT_SIG_NIF}->{2}->{IP},
+        'CE0INT0IP' => $TESTBED{'sgx4000:1:ce0:hash'}->{INT_SIG_NIF}->{1}->{IP},
+        'CE0INT1IP' => $TESTBED{'sgx4000:1:ce0:hash'}->{INT_SIG_NIF}->{2}->{IP},
+        'CE1EXT0IP' => $TESTBED{'sgx4000:1:ce1:hash'}->{EXT_SIG_NIF}->{1}->{IP},
+        'CE1EXT1IP' => $TESTBED{'sgx4000:1:ce1:hash'}->{EXT_SIG_NIF}->{2}->{IP},
+        'CE1INT0IP' => $TESTBED{'sgx4000:1:ce1:hash'}->{INT_SIG_NIF}->{1}->{IP},
+        'CE1INT1IP' => $TESTBED{'sgx4000:1:ce1:hash'}->{INT_SIG_NIF}->{2}->{IP},
+
+        'CE0EXT0NETMASK' => $TESTBED{'sgx4000:1:ce0:hash'}->{EXT_SIG_NIF}->{1}->{MASK},
+        'CE0EXT1NETMASK' => $TESTBED{'sgx4000:1:ce0:hash'}->{EXT_SIG_NIF}->{2}->{MASK},
+        'CE0INT0NETMASK' => $TESTBED{'sgx4000:1:ce0:hash'}->{INT_SIG_NIF}->{1}->{MASK},
+        'CE0INT1NETMASK' => $TESTBED{'sgx4000:1:ce0:hash'}->{INT_SIG_NIF}->{2}->{MASK},
+        'CE1EXT0NETMASK' => $TESTBED{'sgx4000:1:ce1:hash'}->{EXT_SIG_NIF}->{1}->{MASK},
+        'CE1EXT1NETMASK' => $TESTBED{'sgx4000:1:ce1:hash'}->{EXT_SIG_NIF}->{2}->{MASK},
+        'CE1INT0NETMASK' => $TESTBED{'sgx4000:1:ce1:hash'}->{INT_SIG_NIF}->{1}->{MASK},
+        'CE1INT1NETMASK' => $TESTBED{'sgx4000:1:ce1:hash'}->{INT_SIG_NIF}->{2}->{MASK},
+    );
+
+    unless ( $MgwObj->configureMgw9000FromTemplate( \@file_list, \%replacement_map, $out_filename ) ) {
+        $TESTSUITE->{$test_id}->{METADATA} .= "Could not configure MGW9000 from Template files.";
+        printFailTest (__PACKAGE__, $test_id, "$TESTSUITE->{$test_id}->{METADATA}");
+        return 0;
+    }
+    $logger->debug(__PACKAGE__ . ".$test_id:  Configured MGW9000 from Template files.");
+
+=cut
+
+#################################################
+sub configureMgw9000FromTemplate {
+#################################################
+
+    my ($self, $file_list_arr_ref, $replacement_map_hash_ref, $out_file, $flagC) = @_ ;
+    my $subName = "configureMgw9000FromTemplate";
+    my $logger = Log::Log4perl->get_logger(__PACKAGE__ . ".$subName");
+    $logger->debug("--> Entered sub");
+
+    # Checking mandatory inputs...
+
+    unless ( defined $file_list_arr_ref ) {
+        $logger->error(" The mandatory file list array reference input is missing or blank.");
+        $logger->debug("<-- Leaving sub [0]");
+        return 0;
+    }
+
+    unless ( defined $replacement_map_hash_ref ) {
+        $logger->error(" The mandatory replacement map hash reference input is missing or blank.");
+        $logger->debug("<-- Leaving sub [0]");
+        return 0;
+    }
+
+    unless ( defined $out_file ) {
+        $logger->error(" The mandatory out filename  input is missing or blank.");
+        $logger->debug("<-- Leaving sub [0]");
+        return 0;
+    }
+
+    my $doNotUseC = 0;
+
+    if( defined $flagC ) {
+       if( $flagC eq 1 )  {
+          $doNotUseC = 1;
+       }
+    }
+
+    my ( @file_list, %replacement_map );
+    @file_list       = @$file_list_arr_ref;
+    %replacement_map = %$replacement_map_hash_ref;
+
+    my ( $f, @file_processed );
+    foreach (@file_list) {
+        my ( @template_file );
+        unless ( open INFILE, $f = "<$_" ) {
+             $logger->error(" Cannot open input file \'$_\'- Error: $!");
+             $logger->debug("<-- Leaving sub [0]");
+             return 0;
+        }
+
+        @template_file  = <INFILE>;
+
+        unless ( close INFILE ) {
+             $logger->error(" Cannot close input file \'$_\'- Error: $!");
+             $logger->debug("<-- Leaving sub [0]");
+             return 0;
+        }
+
+        # Check to see that all tokens in our input file are actually defined by the user... 
+        # if so - go ahead and do the processing.
+        my @tokens = SonusQA::Utils::listTokens(\@template_file);
+
+        unless (SonusQA::Utils::validateTokens(\@tokens, \%replacement_map) == 0) {
+            $logger->error(" validateTokens failed.");
+            $logger->debug("<-- Leaving sub [0]");
+            return 0;
+        }
+
+        @file_processed = SonusQA::Utils::replaceTokens(\@template_file, \%replacement_map);
+        unless ( @file_processed ) {
+            $logger->error(" replaceTokens failed.");
+            $logger->debug("<-- Leaving sub [0]");
+            return 0;
+        }
+    }
+
+    # open out file and write the content
+    unless ( open OUTFILE, $f = ">$out_file" ) {
+         $logger->error(" Cannot open output file \'$out_file\'- Error: $!");
+         $logger->debug("<-- Leaving sub [0]");
+         return 0;
+    }
+
+    print OUTFILE (@file_processed);
+
+    unless ( close OUTFILE ) {
+         $logger->error(" Cannot close output file \'$out_file\'- Error: $!");
+         $logger->debug("<-- Leaving sub [0]");
+         return 0;
+    }
+
+    my ($NFS_ip, $NFS_userid, $NFS_passwd, $NFS_path);
+    $NFS_ip     = $self->{TMS_ALIAS_DATA}->{'NFS'}->{'1'}->{'IP'};
+    $NFS_userid = $self->{TMS_ALIAS_DATA}->{'NFS'}->{'1'}->{'USERID'};
+    $NFS_passwd = $self->{TMS_ALIAS_DATA}->{'NFS'}->{'1'}->{'PASSWD'};
+    $NFS_path   = $self->{TMS_ALIAS_DATA}->{'NFS'}->{'1'}->{'LOCAL_BASE_PATH'};
+    unless ( SonusQA::Utils::SftpFiletoNFS(
+                                            $NFS_ip,
+                                            $NFS_userid,
+                                            $NFS_passwd,
+                                            $NFS_path,
+                                            $out_file,
+                                          ) ) {
+        $logger->error("$NFS_ip, $NFS_userid, $NFS_passwd, $NFS_path ");
+        $logger->error(" Could not SFTP file \'$out_file\' to SonusNFS.");
+        $logger->debug("<-- Leaving sub [0]");
+        return 0;
+    }
+    $logger->debug(" Could SFTP file \'$out_file\' to SonusNFS.");
+    
+    unless ( $self->sourceTclFile(
+                                    -tcl_file     => "$out_file",
+                                    -doNotUseC    => $doNotUseC,
+                                ) ) {
+        $logger->error(" Could not source file \'$out_file\' from SonusNFS to MGW9000.");
+        $logger->debug("<-- Leaving sub [0]");
+        return 0;
+    }
+    $logger->debug(" Could source file \'$out_file\' from SonusNFS to MGW9000.");
+
+    $logger->debug(" Successfully configured MGW9000 from Template.");
+    $logger->debug("<-- Leaving sub [1]");
+
+    return 1;
+}
+
+
+#################################################
+sub AUTOLOAD {
+#################################################
+    our $AUTOLOAD;
+    my $warn = "$AUTOLOAD  ATTEMPT TO CALL $AUTOLOAD FAILED (POSSIBLY INVALID METHOD)";
+    if(Log::Log4perl::initialized()){
+        my $logger = Log::Log4perl->get_logger($AUTOLOAD);
+        $logger->warn($warn);
+    }else{
+        Log::Log4perl->easy_init($DEBUG);
+        WARN($warn);
+    }
+}
+
+1;
+__END__

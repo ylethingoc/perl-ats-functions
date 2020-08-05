@@ -1,0 +1,113 @@
+
+<ConfigurePlatform>
+  <set confset="Common Params">
+    <desc>
+      This set contains the list of parameters which are common for any type of configuration requested for.
+    </desc>
+		<paramset>
+    	<param useconfig="no"></param>
+    	<param deleteconfig="no"></param>
+    	<param continueconfig="yes"></param>
+        <param numlan="2"></param>
+    	<param lan1ce1="3"></param>
+    	<param lan2ce1="4"></param>
+    	<param lan1ce2="3"></param>
+    	<param lan2ce2="4"></param>
+    	<param serial1ce1="/dev/term/b"></param>
+    	<param serial2ce2="none"></param>
+    	<param recon1="no"></param>
+    	<param serial1ce2="/dev/term/b"></param>
+    	<param serial2ce2="none"></param>
+    	<param recon2="no"></param>
+		</paramset>
+  </set>
+  <set confset="A7 PC0200">
+    <desc>
+      This set contains the list of parameters needed for configuring A7 protocol with board type PC0200.
+    </desc>
+		<paramset>
+    	<param porttype="2"></param>
+    	<param esfd4="1"></param>
+    	<param linecode="1"></param>
+    	<param clocksource="2"></param>
+    	<param T1app="1"></param>
+		</paramset>
+  </set>
+  <set confset="A7 PH0301">
+    <desc>
+      This set contains the list of parameters needed for configuring A7 protocol with board type PH0301.
+    </desc>
+		<paramset>
+	<param linktype="1"></param>
+        <param porttype="2"></param>
+        <param esfd4="1"></param>
+        <param linecode="1"></param>
+        <param clocksource="2"></param>
+        <param clocksource2="2"></param>
+        <param T1app="1"></param>
+        <param T1app2="1"></param>
+                </paramset>
+  </set>   
+  <set confset="C7 PC0200">
+    <desc>
+      This set contains the list of parameters needed for configuring C7 protocol with board type PC0200.
+    </desc>
+                <paramset>
+        <param porttype="1"></param>
+        <param frametype="2"></param>
+        <param impedance="1"></param>
+        <param clocksource="2"></param>
+                </paramset>
+  </set> 
+  <set confset="C7 PH0301">
+    <desc>
+      This set contains the list of parameters needed for configuring C7 protocol with board type PH0301.
+    </desc>
+                <paramset>
+        <param linktype="1"></param>
+        <param porttype="1"></param>
+        <param frametype="2"></param>
+        <param Empedance="1"></param>
+        <param clocksource="2"></param>
+        <param clocksource2="2"></param>
+                </paramset>
+  </set>
+  <set confset="J7 PC0200">
+    <desc>
+      This set contains the list of parameters needed for configuring J7 protocol with board type PC0200.
+    </desc>
+                <paramset>
+        <param porttype="2"></param>
+        <param esfd4="1"></param>
+        <param linecode="1"></param>
+        <param clocksource="2"></param>
+        <param T1app="1"></param>
+                </paramset>
+  </set>
+  <set confset="J7 PS0204">
+    <desc>
+      This set contains the list of parameters needed for configuring J7 protocol with board type PS0204.
+    </desc>
+                <paramset>
+        <param porttype="1"></param>
+        <param linecode="1"></param>
+                </paramset>
+  </set>
+  <set confset="J7 PH0301">
+    <desc>
+      This set contains the list of parameters needed for configuring J7 protocol with board type PH0301.
+    </desc>
+                <paramset>
+        <param linktype="1"></param>
+        <param porttype="2"></param>
+        <param esfd4="1"></param>
+        <param linecode="1"></param>
+        <param clocksource="2"></param>
+        <param clocksource2="2"></param>
+        <param T1app="1"></param>
+        <param T1app2="1"></param>
+                </paramset>
+  </set>
+
+</ConfigurePlatform>
+

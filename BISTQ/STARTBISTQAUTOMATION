@@ -1,0 +1,713 @@
+#!/ats/bin/perl
+
+# perl STARTBISTQAUTOMATION <config file> <build server> <build (.iso|.tar.gz|.qcow2)> [<ePSX build>]
+# perl STARTBISTQAUTOMATION CONFIG.pm slate /sonus/ReleaseEng/Images/SBX5000/V05.00.00A047/sbc-V05.00.00-A047.x86_64.tar.gz /sonus/ReleaseEng/Images/EPX/V09.03.00R000/ePSX-V09.03.00R000.ova
+# perl STARTBISTQAUTOMATION CONFIG.pm slate /sonus/ReleaseEng/Images/SBX5000/V05.00.00A047/sbc-V05.00.00A047-connexip-os_03.00.00-A047_amd64.iso
+
+use strict;
+use warnings;
+
+use lib ('/ats/lib/perl');
+use lib "$ENV{'HOME'}/ats_repos/lib/perl";
+
+use Log::Log4perl qw(get_logger :easy);
+use Data::Dumper;
+use DBI;
+
+use SonusQA::Utils qw (:all);
+use SonusQA::ATSHELPER;
+use SonusQA::TSHARK;
+use SonusQA::TOOLS;
+use SonusQA::TOOLS::TOOLSHELPER;
+use SonusQA::SBX5000::INSTALLER;
+use POSIX qw(strftime);
+use CONFIG();
+use vars qw(%c);
+
+our $databaseConnRead = SonusQA::Utils::db_connect('RODATABASE');
+our $databaseConnWrite = SonusQA::Utils::db_connect('DATABASE');
+
+our ($buildServerIp,%configValues,%suiteValues,@elementsAlias,%elementCount,@validSuites,$testObj,%elementCountDB, $primarySbxAliasData,$secondarySbxAliasData, $install_query, $primarysbx, $secondarysbx, @mailList, $myid, $installedflag, $regressionFlag, $rerunfailed);
+our %regression = ( L  => 'P1',
+		M  => 'P2',
+		F  => 'P3',
+		P1 => 'P1',
+		P2 => 'P2',
+		P3 => 'P3' );
+
+%configValues = %CONFIG::c;
+$configValues{suiteGroup} = $configValues{functionalArea} if(defined $configValues{functionalArea});
+$configValues{bucket} = $configValues{testbedType} if(defined $configValues{functionalArea});
+my $configpath = $ARGV[0];
+$installedflag = 0;
+unless($ARGV[1] eq '--skip-install')
+{
+	$buildServerIp = $ARGV[1];
+	$configValues{buildFullPath} = $ARGV[2];
+	$configValues{ePSXbuildFullPath} = $ARGV[3]; #e.g. /sonus/ReleaseEng/Images/EPX/V09.03.00A907/ePSX-V09.03.00A907.ova
+}else{
+	$configValues{buildFullPath} = $ARGV[2];
+	$installedflag =1;  
+
+}
+
+BEGIN{
+
+	unless($ARGV[1] eq '--skip-install'){
+		if(@ARGV < 3){
+			print "Number arguments are less.\n\n";
+			print "Usage: perl STARTBISTQAUTOMATION <CONFIG.pm> <build server> <build file (.tar.gz|.iso|.qcow2)> [ePSX build (.ova)] \n\n";
+			exit;
+		}
+
+		if(-e $ARGV[0]){
+			print "Config file, $ARGV[0] exists\n";
+		}
+		else{
+			print "Config file, $ARGV[0] doesn't exist\n";
+			exit;
+		}
+
+		if($ARGV[2] !~ /.+\/.+\.(tar\.gz|iso|qcow2)$/){
+			print "value for 'build full path', $ARGV[2] is not valid (3rd argument). It should be either '.tar.gz' or '.iso' or .qcow2 file.\n\n";
+			print "Usage: perl STARTBISTQAUTOMATION <CONFIG.pm> <build server> <build file (.tar.gz|.iso|.qcow2)> [ePSX build (.ova)] \n\n";
+			exit;
+		}
+
+		if(defined $ARGV[3] && $ARGV[3] !~ /.+\/(.+\.ova)$/){
+			print "value for 'ePSX build full path', $ARGV[3] is not valid (4th argument). It should be a '.ova' file.\n\n";
+			print "Usage: perl STARTBISTQAUTOMATION <CONFIG.pm> <build server> <build file (.tar.gz|.iso|.qcow2)> [ePSX build (.ova)] \n\n";
+			exit;
+		}
+	}
+};
+
+
+END {
+	$databaseConnWrite->disconnect();
+	$databaseConnWrite=undef;
+	$databaseConnRead->disconnect();
+	$databaseConnRead=undef;
+#Delete CONFIG.pm and the directory created for copying CONFIG.pm
+	$configpath =~ s/CONFIG\.pm//g;
+#`cd ..`;
+#`rm -rf $configpath`;
+}
+
+
+
+my @dutList = ('GSX','PSX','ASX','ADS','SGX','EMS','DSI','NBS','SBX','SIMS','ICP','IOT','ConnexIP','ESP','IMX','MGW','BGF','MSX','IMS','BSX','TGA','VA','XA','BRX','Lintel','SBC','SSM','VO','OS','Netscore','Harmony','NETScore','ePSX','NETEngine','EPX','DSC','VNFM','WSX','NETENG', 'VIGIL');
+
+my ($build,$cmderrorflag,$emailids,@emailids,$storelogs,$testbedalias,$jobalias,$fipsmode,$tmsupdate,$version,$coredumplevel,$variant,$jenkinsStream,@suitegroup,$suites,@bucket,$bucketlist,$jobid,$jobpriority,$failedTcIds);
+my @mandatoryValues = ('testbedAlias','storeLogs');
+my (@suiteNameList,$sqlQuery);
+our $loglevel = "DEBUG";
+
+$jobid = getUUID();
+
+our $logfile = "BISTQAutomation_".$jobid.".log";
+
+Log::Log4perl->easy_init($DEBUG);
+# Appenders
+my $appender = Log::Log4perl::Appender->new(
+		"Log::Dispatch::File",
+		filename => "$logfile",
+		mode     => "append",
+		);
+my $logger = Log::Log4perl->get_logger(__PACKAGE__ . "main");
+$logger->add_appender($appender);
+my $layout = Log::Log4perl::Layout::PatternLayout->new("%d %p> %F{1}:%L %M - %m%n");
+$appender->layout($layout);
+
+
+
+my $pwd = qx#pwd#;
+chomp $pwd;
+
+print "Log file path : $pwd/$logfile\n";
+
+# Logging svn info
+# my ($local, $server) = SonusQA::Utils::getSVNinfo();
+# $logger->debug(__PACKAGE__ . ":svn info local: $local");
+# $logger->debug(__PACKAGE__ . ":svn info server: $server");
+
+#############
+eval{
+	my $validateresult = &validateConfig();
+	unless( $validateresult ){
+		my $msg = 'CONFIG validation failed.';	
+		$logger->error(__PACKAGE__ . ": $msg");
+		$msg = "ERROR in execution. ERROR: $msg\nCheck the BISTQ automation log for more details. \n Log : '$pwd/$logfile'";
+		&sendMail("\n$msg\n",@mailList);
+		exit;
+	}
+
+    # Setting installed flag to 1, since for qcow2, we will be installing from the suite, when newFromAlias is called
+    $installedflag = 1 if($configValues{buildFullPath}=~/\.qcow2$/);
+    
+	&populateATSSchedulerTables();
+};
+if($@){
+	my $message = "ERROR in execution. Check the BISTQ automation log for more details. \n Log : '$pwd/$logfile'";
+	print "\n\n$message\n\n";
+	$logger->error(__PACKAGE__ . ": $message");        
+	&sendMail("\n$message\n",@mailList);
+}
+
+
+
+
+##################
+
+#head1 validateConfig()
+
+#	DESCRIPTION:
+
+#	- This function is used to validate the given CONFIG.pm file to make sure all the required details are mentioned in CONFIG.pm, and
+#	values mentioned in CONFIG.pm are valid.
+#	- Runs the DB Query to get the all the Suite Detials, and checks, required number of DUTs are available and rechable as per the requirement in TestbedAlias.
+#	- Sends a mail to all the members in 'mailTo' list of CONFIG.pm, mentioning the details about which Suites will be executed.
+
+#cut
+
+sub validateConfig(){
+	my ($dut,$message,%messageContent,@sessionFailed);
+
+	$logger->debug("Starting Config Validation"); 
+
+# making mail list
+	my $list = `whoami`;
+	$list =~ s/^\s+|\s+$//;
+	push(@mailList,$list);
+	if( defined $configValues{mailTo}){
+		foreach (@{$configValues{mailTo}}){
+			push(@mailList,$_) unless($_ =~ /$list/);
+		}
+	}
+	chomp @mailList;
+	$configValues{mailTo}= \@mailList;
+	$logger->debug("List of Mail IDs to inform about this execution: @{$configValues{mailTo}}"); 
+
+# checking mandatory fields
+	foreach my $mandate (@mandatoryValues){
+		if(!defined $configValues{$mandate}){
+			$message = "Mandatory value for '$mandate' is missing in config file. Please add the entry for all mandatory fields (". join (',', @mandatoryValues) .") in config File";
+			$logger->error($message);
+			&sendMail("$message\n", @mailList);
+			exit;
+		}
+	}
+
+        $configValues{jobAlias} = (defined $configValues{jobAlias}) ? $configValues{jobAlias} : "PCR999999";
+
+	if($configValues{coredumpLevel} !~ /(sensitive|normal)/i){
+		$message = "coredumpLevel value \'$configValues{coredumpLevel}\' is not matching the expected value, Expected values \'sensitive or normal\'";
+		$logger->error($message);
+		&sendMail("$message\n", @mailList);
+		exit;
+	}
+
+	$configValues{tmsUpdate} = 'T';
+	if($configValues{tmsUpdate} !~ /[F T]/i){	    
+		$message = "tmsUpdate value \'$configValues{tmsUpdate}\' is not matching the expected value, Expected values are \'T\' or \'F\'";
+		$logger->error("$message\n");
+		&sendMail($message,@mailList);
+		exit;	
+	}
+
+	if($configValues{storeLogs} !~ /[0 1 2]/){
+		$message = "storeLogs value \'$configValues{storeLogs}\' is not matching the expected value, Expected values are \'0\' or \'1\' or \'2\'";
+		$logger->error($message);
+		&sendMail("$message\n",@mailList);
+		exit;
+	}
+
+	# Job priority is not functional. This is just a placeholder.
+	if(defined $configValues{jobPriority} and $configValues{jobPriority} !~ /(high|normal)/i){        
+		$message = "jobPriority value \'$configValues{jobPriority}\' is not matching the expected value, Expected values are \'high\' or \'low\'";
+		$logger->error($message);
+		&sendMail("$message\n",@mailList);
+		exit;
+	}
+
+	my @suitecheck;
+	if((defined $configValues{suites} and ref $configValues{suites} eq "ARRAY") or ( defined $configValues{suiteGroup} and ref $configValues{suiteGroup} eq "ARRAY")){
+		my ($suiteList,$result);
+		$logger->debug("Validating suites in the suite group ");
+		@bucket = map {"'".$_."'"} @{$configValues{bucket}};
+		$bucketlist = join( ',' ,@bucket);
+		my ($suite,$selectedSuite);
+		if(defined $configValues{suites}){
+			foreach (@{$configValues{suites}}){
+				$selectedSuite = $selectedSuite . ",\'$_\'";
+				$selectedSuite =~ s/^,//;
+			}
+		}
+		if(defined $configValues{suiteGroup}){
+			my @suitegroup = @{$configValues{suiteGroup}};
+			foreach my $group ( @suitegroup ){
+				if(defined $configValues{suites}){
+
+					$suite = &dbCmd("SELECT SuiteName FROM ats_sched_suite WHERE SuiteGroup = '".$group."' AND SuiteName IN ($selectedSuite) AND BUCKET in ($bucketlist) AND SuiteReady = '".$configValues{suiteReady}."'");
+				}else{
+					$suite = &dbCmd("SELECT SuiteName FROM ats_sched_suite WHERE SuiteGroup = '".$group."' AND BUCKET in ($bucketlist) AND SuiteReady = '".$configValues{suiteReady}."'");
+				}
+
+				foreach my $row (@{$suite}){
+					chomp $row;
+					$suiteList = $suiteList . ",\'$row->{'SuiteName'}\'";
+				}	
+			}
+		}else{
+
+			$suite = &dbCmd("SELECT SuiteName FROM ats_sched_suite WHERE SuiteName IN ($selectedSuite) ");
+		    foreach my $row (@{$suite}){
+		    	chomp $row;
+		    	$suiteList = $suiteList . ",\'$row->{'SuiteName'}\'";
+		    }	
+		}
+
+		$suiteList =~ s/^,//;
+		@suitecheck = split ( ',' , $suiteList );
+		@bucket = map {"'".$_."'"} @{$configValues{bucket}};
+		$bucketlist = join( ',' ,@bucket);
+		$sqlQuery = "select SuiteName,DUT,Version,RequiredElement from ats_sched_suite where SuiteName IN ($suiteList) ";
+		$logger->debug("running a DB Query to get all the suites details");
+		$result = &dbCmd($sqlQuery);
+		my %tempHash;
+		foreach my $suiteResult (@{$result}){
+			chomp $suiteResult;
+
+			my @version = split(/,/,$suiteResult->{'Version'});
+			$tempHash{'Version'} = \@version;
+
+			$suite = $suiteResult->{'SuiteName'};
+			
+			my @elements = split(/,/,$suiteResult->{'RequiredElement'});
+			foreach my $ele (@elements){
+				$tempHash{'RequiredElement'}{$ele}++; 
+			}
+
+			$tempHash{'DUT'} = $suiteResult->{'DUT'};
+			$suiteValues{$suite} = {%tempHash};
+			push(@suiteNameList, $suite);
+			undef %tempHash;
+			$suite = '';
+		}
+		foreach my $tmpsuite (@suitecheck) {
+			$tmpsuite =~ s/\'//g;
+			if(grep {$tmpsuite eq $_}@suiteNameList){
+				$suiteValues{$tmpsuite}{'valid'}=1; 
+				next;
+			}else{
+				$message = "\'$tmpsuite\' does not exist in iSMART database. Create this suite on the iSMART GUI for executing it.";
+				$logger->debug("$message");
+				if(defined $messageContent{$tmpsuite}){
+					$messageContent{$tmpsuite} = $messageContent{$tmpsuite} . "\n\t$message";
+				}else{
+					$messageContent{$tmpsuite} = "\n\t$message";
+				}
+				$suiteValues{$tmpsuite}{'valid'}=0;
+			}
+		}    
+	}else{       
+		$message = "suites/suitegroup parameter value is not in the expected format. An array reference is expected";
+		$logger->error($message);
+		&sendMail("$message\n",@mailList);
+		exit;
+	}
+
+	$logger->debug("Config values: \n".Dumper(\%configValues)."\n");
+	$logger->debug("Suite information \n".Dumper(\%suiteValues)."\n");
+
+	if(defined $configValues{testbedAlias}){
+		my (@testbedAliasProductsUid,$result);
+		$sqlQuery = qq | select sons_nelement.sons_nelement_alias,ats_sched_testbed.Status  from sons_nelement,ats_sched_testbed where ats_sched_testbed.TestBedAlias = "$configValues{testbedAlias}" and ats_sched_testbed.Element = sons_nelement.sons_nelement_uuid; |;
+		$result = &dbCmd($sqlQuery);
+		@testbedAliasProductsUid = @{$result};
+		foreach my $product (@testbedAliasProductsUid){
+                        if($product->{'Status'} eq 'O') { 
+                              $logger->error("At least one element ($product->{'sons_nelement_alias'}) in Scheduler Testbed $configValues{testbedAlias} is marked Out-of-service - Aborting"); 
+                              return 0; 
+                        }
+			if($product->{'sons_nelement_alias'} =~ /(.*)__(.*)/){
+			$elementCountDB{'SBX5000'}++;
+			}else{
+				$sqlQuery = qq | select distinct sons_v_network_alias2.sons_nelement_alias,sons_v_network_alias2.sons_objtype_name from sons_v_network_alias2,sons_nelement where sons_v_network_alias2.sons_nelement_alias = "$product->{'sons_nelement_alias'}" and sons_v_network_alias2.sons_nelementattr_nelement_uuid = sons_nelement.sons_nelement_uuid |;
+				$result = &dbCmd($sqlQuery);
+				#$testObj = SonusQA::ATSHELPER::newFromAlias(-tms_alias => "$result->[1]",-return_on_fail => 1);
+				$testObj = 1;	
+				unless( $testObj ){
+					$logger->debug("Session creation failed to $result->[0]->{'sons_objtype_name'} Alias Name: $result->[0]->{'sons_nelement_alias'}..!!! ");
+					push(@sessionFailed,$result->[0]->{'sons_nelement_alias'});
+				}else{
+					$elementCount{$result->[0]->{'sons_objtype_name'}}++;
+					push(@elementsAlias,$result->[0]->{'sons_nelement_alias'});
+				}
+				$elementCountDB{$result->[0]->{'sons_objtype_name'}}++;
+			}
+		}
+		$logger->debug("List of Products and their count in TestBedAlias: $configValues{testbedAlias}:");
+		$logger->debug("Products list: ".Dumper(\@elementsAlias)."\n");
+		$logger->debug("Available Products Count: ".Dumper(\%elementCountDB)."\n");
+		#$logger->debug("Reachable Products Count: ".Dumper(\%elementCount)."\n");
+	}
+
+	foreach my $suite (keys %suiteValues){
+		foreach my $ele (keys %{$suiteValues{$suite}{'RequiredElement'}}){
+			$elementCount{$ele} ||= 0;
+			$elementCountDB{$ele} ||= 0;
+			if(defined $elementCount{$ele}){
+				if ($suiteValues{$suite}{'RequiredElement'}{$ele} <= $elementCount{$ele}){
+					$logger->debug("For Suite $suite, Required number of $ele is available in Testbed Alias $configValues{testbedAlias}.");
+					next;
+				}elsif( $suiteValues{$suite}{'RequiredElement'}{$ele} <= $elementCountDB{$ele}){
+					$logger->debug("For Suite $suite, Required number of $ele is/are not reachable in Testbed Alias $configValues{testbedAlias}. Required count of \'$ele\' : \'$suiteValues{$suite}{'RequiredElement'}{$ele}\'. Reachable '$ele' devices count: \'$elementCount{$ele} Available '$ele' devices count: \'$elementCountDB{$ele} \'");
+					$message = "Required number of \'$ele\' is/are not reachable in Testbed Alias \'$configValues{testbedAlias}\'.Required count of \'$ele\' : \'$suiteValues{$suite}{'RequiredElement'}{$ele}\' Available '$ele' devices count: \'$elementCountDB{$ele} Reachable '$ele' devices count: \'$elementCount{$ele} \'";
+					$messageContent{$suite} .= "\n\t$message";
+					$suiteValues{$suite}{'valid'}=0;
+				}else{
+					$logger->debug("For Suite $suite, Required number of $ele is not available in Testbed Alias $configValues{testbedAlias}. Required count of \'$ele\' : \'$suiteValues{$suite}{'RequiredElement'}{$ele}\' and available Count: \'$elementCountDB{$ele} \'");
+					$message = "Required number of \'$ele\' is not available in Testbed Alias \'$configValues{testbedAlias}\'.Required count of \'$ele\' : \'$suiteValues{$suite}{'RequiredElement'}{$ele}\' and available Count: \'$elementCountDB{$ele} \'";
+					$messageContent{$suite} .=  "\n\t$message";
+					$suiteValues{$suite}{'valid'}=0;
+				}
+			}else{
+				$logger->debug("For Suite $suite, Required element $ele is not available in Testbed Alias $configValues{testbedAlias} add \'$ele\' to the Scheduler Testbed Alias \'$configValues{testbedAlias}\' for executing it.");
+				$message = "Required element \'$ele\' is not available in Testbed Alias \'$configValues{testbedAlias}\' add \'$ele\' to the Scheduler Testbed Alias \'$configValues{testbedAlias}\' for executing it.";
+				if(defined $messageContent{$suite}){
+					$messageContent{$suite} = $messageContent{$suite} . "\n\t$message";
+				}else{
+					$messageContent{$suite} = "\n\t$message";
+				}
+				$suiteValues{$suite}{'valid'}=0;
+			}
+		}
+	}
+
+# if($configValues{buildFullPath} =~ /(([a-zA-Z]+)\-([^-]+)\-*[ARSFEB]\d{3})/){
+	if ( $configValues{buildFullPath} =~ /(([a-zA-Z]+)\-([^-]+)\-*[ARSFEB]\d{3})/  || $configValues{buildFullPath} =~ /(([a-zA-Z]+)\.([^-]{9})[ARSFEB]\d{3})_[a-zA-Z.]+/) {
+
+		$dut = uc($2);
+		$configValues{build}=$1;
+		$configValues{version} = $3;
+
+		if ($dut eq 'PSX') {
+			$configValues{build} =~ s/PSX\./PSX_/;
+                        $configValues{build} =~ s/PSX\-/PSX_/;
+		}
+		else {
+			$configValues{build} =~ s/\-/_/;
+		}
+
+		if(grep{$dut =~ /$_/}@dutList){
+			$logger->debug(" $dut is a valid DUT");
+		}
+
+		foreach my $suite (keys %suiteValues){
+			foreach my $excludeversion (@{$configValues{excludeVersion}}){
+				if(grep {uc($excludeversion) eq uc ($_)} @{$suiteValues{$suite}{Version}}){
+					$logger->debug("This suite: $suite has been excluded from running as per excludeVersion=> $excludeversion");
+					$suiteValues{$suite}{'valid'}=0;
+
+				}
+			}
+			next if(defined $suiteValues{$suite}{'valid'} and $suiteValues{$suite}{'valid'} == 0);
+			my @version =  @{$suiteValues{$suite}{Version}}; 
+			if(SonusQA::Utils::greaterThanVersion(uc($configValues{version}),uc($version[0]))){
+				$logger->debug("Build $configValues{build} is valid for suite: $suite");
+			}else{
+				$logger->debug("Build $configValues{build} is not valid for suite: $suite Add \'$configValues{version}\' to the supported versions to this suite on the iSMART GUI for executing it.");
+				$message = "Build \'$configValues{build}\' is not valid for suite: \'$suite\'. Add \'$configValues{version}\' to the supported versions to this suite on the iSMART GUI for executing it.";
+				if(defined $messageContent{$suite}){
+					$messageContent{$suite} = $messageContent{$suite} . "\n\t$message";
+				}else{
+					$messageContent{$suite} = "\n\t$message";
+				}
+				$suiteValues{$suite}{'valid'}=0;
+			}	
+		}
+	}
+
+	foreach my $temp (@suitecheck){
+		$temp =~ s/\'//g;
+		if($suiteValues{$temp}{'valid'} == 1){
+			push(@validSuites,$temp);
+		}
+	}
+#    $configValues{suites} = \@validSuites;
+	$logger->debug("List of Valid Suites: @validSuites \n");
+	if($#validSuites < 0 ){
+		$message = "There is no valid suite to continue with execution.";
+		if(keys %messageContent){
+			$message .= $message."\n\nThe following suites cannot be executed for the reasons mentioned below:\n\n";
+			foreach (keys %messageContent){
+				$message = $message . "$_ :    $messageContent{$_}\n";
+			}
+		}
+		if(@sessionFailed){
+			$message = $message . "\nSession creation failed to following Elements:\n";
+			foreach(@sessionFailed){
+				$message = $message . " $_,"; 
+			}
+		}
+		$message =~ s/,$//;        
+			&sendMail($message,@mailList);
+		$logger->error("$message");
+	}else{
+		$message = "CONFIG validation successful!\n\nThe following suites will be executed:\n";
+		foreach (@validSuites){
+			$message = $message . " $_,";     
+		}
+		$message =~ s/,$//;
+		if(keys %messageContent){
+			$message = $message."\n\nThe following suites cannot be executed for the reasons mentioned below:\n\n";
+			foreach (keys %messageContent){
+				$message = $message . "$_ :    $messageContent{$_}\n";
+			}
+		}
+		if(@sessionFailed){
+			$message = $message . "\nLooks like one or more devices in the Scheduler Testbed are not reachable. Any suite requiring them will not be executed. Session creation failed to following Elements:\n";
+			foreach(@sessionFailed){
+				$message = $message . " $_,";
+			}
+		}
+		$message =~ s/,$//;
+		if(keys %messageContent and @sessionFailed){
+			&sendMail($message,@mailList);
+		}
+		$logger->error("$message");
+	}
+}
+
+
+sub sendMail{
+	my($msg,@mailList)=@_;
+
+	unless(defined($msg) && @mailList){
+		$logger->error("sendEmail ARGUMENTS LEFT EMPTY");
+		return 0;
+	}
+
+	my $sendmail = "/usr/sbin/sendmail -t";
+	my $subject = "Subject: BISTQ Automation Execution Status\n";
+	my $to = "To: ".join( ',', @mailList )." \n";
+	$logger->debug("Sending mail to : '@mailList' ");
+	$jobid ||= "NULL";
+	my $from = "From: BISTQ System <sonus-ats-dev\@sonusnet.com> \n";
+	eval{
+		open(SENDMAIL, "|$sendmail");
+		print SENDMAIL $to;
+		print SENDMAIL $from;
+		print SENDMAIL $subject;
+		print SENDMAIL "Content-type: text/plain\n\n";
+		print SENDMAIL "JobID        :".$jobid." \n";
+		print SENDMAIL "Testbed Alias    :".$configValues{testbedAlias}."\n";
+		print SENDMAIL "Build        :".$configValues{build}."\n";
+		print SENDMAIL "Version      :".$configValues{version}."\n\n";
+		print SENDMAIL $msg;
+		close(SENDMAIL);
+	};
+	if($@){
+		$logger->error("sendEmail ERROR: ".$@);
+		return 0;
+	}
+	return 1;
+}
+
+
+sub dbCmd{
+	my($query) = @_;
+	my($databaseConn);
+
+	unless(defined($query)){
+		$logger->error("dbCmd QUERY ARGUMENT WAS LEFT EMPTY");
+		return 0;
+	}
+	if($query=~ m/SELECT/i){
+		unless($databaseConnRead){
+			unless($databaseConnRead=SonusQA::Utils::db_connect('RODATABASE')){
+				$logger->error("ERROR IN CONNECTING TO READ DB!");
+				return 0;
+			}
+		}
+		$databaseConn = $databaseConnRead;
+	}
+	else{
+		unless( $databaseConnWrite ){
+			unless($databaseConnWrite=SonusQA::Utils::db_connect('DATABASE')){
+				$logger->error("ERROR IN CONNECTING TO WRITE DB!");
+				return 0;
+			}
+		}
+		$databaseConn = $databaseConnWrite;
+	}
+
+	my ($queryHandler,$key, $value,$row, @result);
+	eval{
+		$queryHandler = $databaseConn->prepare($query);
+		$queryHandler->execute();
+	};
+	if($@){
+		$logger->error("DB ERROR: ".$queryHandler->{Statement});
+		$logger->error("DB ERROR: ".$queryHandler->errstr);
+		return 0;
+	}
+
+	if($query=~ m/SELECT/i){
+		while($row = $queryHandler->fetchrow_hashref()){
+			push(@result,$row);
+		}
+	}
+
+	return \@result;
+}
+
+
+sub populateATSSchedulerTables{
+	$build = $configValues{build};
+	$build =~ s/-//;
+	$build = uc $build;
+	$cmderrorflag = 0;
+	$emailids = join (',', @{$configValues{mailTo}});
+	$failedTcIds = (defined $configValues{testCase}) ? join (',', @{$configValues{testCase}}) : '' ;
+	@emailids = @{$configValues{mailTo}};
+	$storelogs = $configValues{storeLogs};
+	$testbedalias = $configValues{testbedAlias};
+	$jobalias =  $configValues{jobAlias};
+	$fipsmode = $configValues{fipsmode};
+	$tmsupdate = $configValues{tmsUpdate};
+	$regressionFlag = (defined $configValues{regressionFlag}) ? $regression{$configValues{regressionFlag}} : 'P3' ;
+	$version = $configValues{version};
+	$version = uc $version;
+	$coredumplevel = (defined $configValues{coredumpLevel} and $configValues{coredumpLevel} =~/sensitive/i ) ? 1 : 0;
+	$variant = $configValues{variant};
+	$jenkinsStream = $configValues{jenkinsStream};
+	$rerunfailed = (defined $configValues{rerunfailed}) ?  $configValues{rerunfailed} :  0 ;
+	my (@ats_sched_job_values,@queries,$sql,$sqlresult,$testbedid) = ((),(),'','','');
+	$myid = qx#id -un#;
+	chomp $myid;
+	@validSuites = grep(s/\s*$//g, @validSuites);
+	push (@emailids, $myid);
+	$sqlresult = &dbCmd("SELECT TestbedId FROM ats_sched_testbed WHERE TestBedAlias = '".$testbedalias."'");
+	$testbedid = $sqlresult->[0]->{'TestbedId'};
+	my $jobpriority = $configValues{jobPriority};
+	$jobpriority = "normal" unless( defined $jobpriority and $jobpriority =~ /high/i );
+
+	my $cc_view = ($configValues{ePSXbuildFullPath}) ? "$configValues{buildFullPath},$configValues{ePSXbuildFullPath}" : $configValues{buildFullPath} ;
+
+#Creating insert query for ats_sched_job
+	$sql = "INSERT INTO ats_sched_job (JobId,JobAlias,UserName,TestbedId,Version,Variant,JenkinsStream,Build,TMSUpdate,BuildFlag,InstalledFlag,RunDefaultTests,EmailIds,StoreLogs,SensitiveCoredumpLevel,FipsMode,CmdErrorFlag,JobType,CCView,ReRunFailed,TestsFailed) VALUES ('$jobid','$jobalias','$myid','$testbedid','$version','$variant','$jenkinsStream','$build','$tmsupdate','0','$installedflag','$regressionFlag','$emailids','$storelogs','$coredumplevel','$fipsmode','$cmderrorflag','bistq','$cc_view','$rerunfailed','$failedTcIds')";
+
+	$logger->debug(__PACKAGE__ ."'$jobid','$jobalias','$myid','$testbedid','$version','$variant','$build','$tmsupdate','0','$installedflag','$regressionFlag','$emailids','$storelogs','$coredumplevel','$fipsmode','$cmderrorflag','bistq','$cc_view','$failedTcIds'");
+	push (@queries,$sql);
+
+	my $suiteOder = 1;
+	if(defined $configValues{suites}){
+		foreach my $suiteid (@{$configValues{suites}}){
+			if(grep {$suiteid eq $_} @validSuites ){
+				my $suiteids = &dbCmd("SELECT SuiteId FROM ats_sched_suite WHERE SuiteName in ('$suiteid')");
+                my $now_string = strftime "%Y-%m-%d %H:%M:%S", localtime;
+				$sql = "INSERT INTO ats_sched_test_to_run (JobId,TestsToRun,Type,TestSuiteOrder,JobStatus) VALUES ('".$jobid."','".$suiteids->[0]->{'SuiteId'}."','SuiteID','".$suiteOder."','".$suiteid." [q]".$now_string."')";
+				push (@queries, $sql);
+			}
+			$suiteOder++;
+		}
+	}else{
+		foreach my $suiteid (@validSuites ){
+			my $suiteids = &dbCmd("SELECT SuiteId FROM ats_sched_suite WHERE SuiteName in ('$suiteid')");
+            my $now_string = strftime "%Y-%m-%d %H:%M:%S", localtime;
+			$sql = "INSERT INTO ats_sched_test_to_run (JobId,TestsToRun,Type,TestSuiteOrder,JobStatus) VALUES ('".$jobid."','".$suiteids->[0]->{'SuiteId'}."','SuiteID','".$suiteOder."','".$suiteid." [q]".$now_string."')";
+			push (@queries, $sql);
+            $suiteOder++;
+		}
+	}
+	foreach( @queries ) {
+		&dbCmd($_);
+	}
+
+	sleep 4; # Wait for 4 seconds for slaves to sync up with master. 
+
+	my ($testbedDetails,$testbedStatus);
+	$sql = "select  TestBedAlias , sons_nelement_alias,  (case Status when 'F' then 'Free' when 'B' then  'Busy' when 'U' then 'In Use' when 'O' then 'Out Of Service' end) as status, TestBedOrder from ats_sched_testbed left join sons_objtype on  (ProductType = sons_objtype_uuid) left join sons_nelement on (Element = sons_nelement_uuid)  WHERE TestBedAlias  = '$testbedalias' ORDER BY TestBedOrder asc";
+	$testbedDetails= &dbCmd($sql);
+	$testbedStatus .="     --------------------------------------------------------------------------- \n ";
+	$testbedStatus .="	S.Testbed		Element(Status)(order)			| \n";
+	$testbedStatus .="     --------------------------------------------------------------------------- \n ";
+	foreach my $row (@{$testbedDetails}) {
+		$testbedStatus .="	".$row->{'TestBedAlias'}."		".$row->{'sons_nelement_alias'}."	(".$row->{'status'}.")"."(".$row->{'TestBedOrder'}.") \n";
+	}
+	$testbedStatus .="     --------------------------------------------------------------------------- \n ";
+
+	my ($queue,%queue,$msg,$jobs);
+	$sql = "select distinct(Qslot),TestBedAlias,UserName,queue.JobId from ats_sched_testbed as testbed right JOIN ats_sched_job as job ON job.TestbedId=testbed.TestBedId  JOIN ats_sched_job_queue as queue ON queue.JobId=job.JobId where testbed.TestBedAlias like '$testbedalias'";
+	$queue = &dbCmd($sql);
+	foreach my $row (@{$queue}){
+		$queue{$row->{'JobId'}}{'username'}=$row->{'UserName'};
+		$queue{$row->{'JobId'}}{'testbedalias'}=$row->{'TestBedAlias'};
+		$queue{$row->{'JobId'}}{'qslot'}= $row->{'Qslot'};
+	}
+	$jobs .="	 --------------------------------------------------------------------------- \n ";
+	$jobs .="	Qslot		User		Schduler TestBed	 \n ";
+	$jobs .="	 -------------------------------------------------------------------------- \n ";
+	foreach my $key (sort {$queue{$a}->{'qslot'} <=> $queue{$b}->{'qslot'}} (keys %queue)){
+		$jobs .="	".$queue{$key}{'qslot'}."		".$queue{$key}{'username'}."		".$queue{$key}{'testbedalias'}."		\n  ";
+
+	}
+	$jobs .="	 --------------------------------------------------------------------------- \n ";
+
+        my ($firstPart, $jenkinsBuildNumber) = split /\p{Dash}/, $jobalias;
+	if( scalar (keys %queue) == 1){
+		$msg= "
+			**********************************************************************************************************
+			New queued job information:
+			**********************************************************************************************************
+
+			* UserName: '$myid'
+			* Jenkins build number: '$jenkinsBuildNumber'
+			* Suites to execute under Functional Area: '$suites'
+			* Your job Qslot is:'".$queue{$jobid}{'qslot'}."'
+			* Current No of Jobs in queue(Your job should get executed immediately)
+			$jobs
+			* Current Scheduler TestBed Status
+			$testbedStatus
+			Automation log file : /home/$myid/ats_user/logs/$testbedalias/Automation_$jobid.log 
+			**********************************************************************************************************
+
+			";
+	}else{
+
+		$msg= "
+			**********************************************************************************************************
+			New queued job information:
+			**********************************************************************************************************
+
+			* UserName: '$myid'
+			* Jenkins build number: '$jenkinsBuildNumber'
+			* Suites to execute under Functional Area: '$suites'
+			* Your job Qslot is:'".$queue{$jobid}{'qslot'}."'
+			* Current No of Jobs in queue(Qslot with least no. will be run first)
+			$jobs
+			* Current Scheduler TestBed Status
+			$testbedStatus
+			Automation log file : /home/$myid/ats_user/logs/$testbedalias/Automation_$jobid.log 
+			**********************************************************************************************************
+
+			";
+	}
+
+	&sendMail("\nAdded a job to queue.\n".$msg,@emailids);
+	$logger->debug("Job ID : '$jobid' \nAdded a job to queue. \n '$msg' ");
+}
+
+sub getUUID{
+	my $ug    = new Data::UUID;
+	my $uuid1 = $ug->create();
+	my $str   = $ug->to_string( $uuid1 );
+	$str = lc $str;
+#$logger->debug("JobID generated : '$str' ");
+	print " JobID generated : '$str' \n";
+	return $str;
+}
+
+1;

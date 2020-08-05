@@ -1,0 +1,253 @@
+#
+#	Get sar file and sar data for days a test run was done
+#
+
+Usage()
+{
+cat <<!EOF
+
+	Usage: ${Cmd} [-c] [-e] [-d <Dir2SaveFiles>] [-t <TimeStampFile>] [-D]
+
+	where
+		 -c	copy sar file to Dir2SaveFiles only; do NOT create
+			sar data files. 
+
+		 -e	extract sar data and create sar data files only; do NOT 
+			copy sar data files to Dir2SaveFiles.
+
+		 -d	<Dir2SaveFiles> is the directory location (full path)
+			where sar safiles are to be copied and sar data files
+			are to be created.
+			default: ${SAVEDIR}
+
+		 -t	<TimeStampFile> is the name of the file that contains
+			the start and end time stamps of the test run.
+			default: ${TSFILE}
+
+		 -D	Display debug information
+
+!EOF
+
+}
+
+mk_month_tbl()
+{
+
+cat <<!EOF
+Jan	01	31
+Feb	02	28
+Mar	03	31
+Apr	04	30
+May	05	31
+Jun	06	30
+Jul	07	31
+Aug	08	31
+Sep	09	30
+Oct	10	31
+Nov	11	30
+Dec	12	31
+!EOF
+
+}
+
+
+Cmd=$0
+SAVEDIR="/home/Administrator/SARLOGS"
+TSFILE="sartimes"
+do_copy="Y"
+do_extract="Y"
+debug=""
+
+set -- `getopt "ced:t:D" $*`	#check for illegal command line arguments
+if [ $? -gt 0 ]
+then
+	Usage
+	exit 1
+fi
+
+for a in $*		#process command line arguments
+do
+	case $a in
+
+	-c)
+		do_extract="N"
+		shift 1
+		;;
+
+	-e)
+		do_copy="N"
+		shift 1
+		;;
+
+	-d)
+		SAVEDIR=$2
+		shift 2
+		;;
+
+	-t)
+		TSFILE=$2
+		shift 2
+		;;
+
+	-D)
+		debug=$a
+		shift
+		;;
+
+	--)
+		shift
+		break
+		;;
+
+	esac
+done
+
+[ -n "${debug}" ] && echo ${Cmd}: Started `date`
+[ -n "${debug}" ] && echo ${Cmd}: File info: Dir2SaveFiles ${SAVEDIR} TimeStampFile ${TSFILE}
+[ -n "${debug}" ] && echo ${Cmd}: do copy = ${do_copy}  do extract = ${do_extract}
+
+if [ ! \( -f "${TSFILE}" \) ]
+then
+	echo ${Cmd}: Time stamp file ${TSFILE} does not exist
+	echo "       Please create one and use the -t option"
+	Usage
+	exit 1
+fi
+
+if [ ! \( -d "${SAVEDIR}" \) ]
+then
+	echo ${Cmd}: Save directory ${SAVEDIR} does not exist -- process ABORTED
+	Usage
+	exit 1
+fi
+cp ${TSFILE} ${SAVEDIR}
+cd ${SAVEDIR}
+
+sdate_str=`gawk '{ print $2 }' ${TSFILE} `
+edate_str=`gawk '{ print $4 }' ${TSFILE} `
+[ -n "${debug}" ] && echo ${Cmd}: sdate str = $sdate_str
+[ -n "${debug}" ] && echo ${Cmd}: edate str = $edate_str
+
+if [ "${do_copy}" = "Y" ]
+then
+	[ -n "${debug}" ] && echo ${Cmd}: Do copy of sar file to `pwd`
+	filelist=""
+	sdate=`echo ${sdate_str} | sed -e 's/-//g' `
+	sday=`echo ${sdate_str}  | sed -e 's/^.*-//' | sed 's/^0*//'`
+	edate=`echo ${edate_str} | sed -e 's/-//g' `
+	eday=`echo ${edate_str}  | sed -e 's/^.*-//' | sed 's/^0*//'`
+	let "ndays = ${edate} - ${sdate} + 1"
+	[ -n "${debug}" ] && echo ${Cmd}: sdate = $sdate   sday = $sday
+	[ -n "${debug}" ] && echo ${Cmd}: edate = $edate   eday = $eday
+	[ -n "${debug}" ] && echo ${Cmd}: ndays = $ndays
+
+	if [ ${ndays} -lt 31 ]	# test done within same month
+	then
+		let "cnt = ${sday}"
+		[ -n "${debug}" ] && echo ${Cmd}: cnt = $cnt
+
+	else	# test done over a month boundry
+		mk_month_tbl > /tmp/month.tbl
+		month=`echo ${sdate_str} | cut -f2 -d'-' `
+		year=`echo ${sdate_str} | sed -e 's/-.*$//' `
+		mo_end=`grep ${month} /tmp/month.tbl | cut -f3`
+		if [ ${month} -eq  2 ]	# do leap year test
+		then
+			let "leap1 = ${year} % 4"
+			let "leap2 = ${year} % 100"
+			let "leap3 = ${year} % 400"
+			if [ ${leap1} -eq 0  -a  ${leap2} -gt 0  -o  ${leap3} -eq  0 ]
+			then
+				let "mo_end = ${mo_end} + 1"
+			fi
+		fi
+		[ -n "${debug}" ] && echo ${Cmd}: month = $month  month end = ${mo_end} year = ${year}
+		[ -n "${debug}" ] && echo ${Cmd}: leap1 = $leap1  leap2 = $leap2 leap3 = $leap3
+		let "cnt = ${sday}"
+		while [ ${cnt} -le ${mo_end} ]
+		do
+			if [ ${cnt} -lt 10 ]
+			then
+				filelist="${filelist} sa0${cnt}"
+			else
+				filelist="${filelist} sa${cnt}"
+			fi
+			let "cnt = ${cnt} + 1"
+		done
+		let "cnt = 1"
+	fi
+	while [ ${cnt} -le ${eday} ]
+	do
+		if [ ${cnt} -lt 10 ]
+		then
+			filelist="${filelist} sa0${cnt}"
+		else
+			filelist="${filelist} sa${cnt}"
+		fi
+		let "cnt = ${cnt} + 1"
+	done
+	[ -n "${debug}" ] && echo ${Cmd}: SAR file list = ${filelist}
+
+	for sarfile in ${filelist}
+	do
+		cp /var/log/sa/${sarfile} .
+		sleep 1
+	done
+	[ -n "${debug}" ] && echo ${Cmd}: Copy of SAR files completed: `ls -tr sa[0-3]*`
+
+	
+
+fi
+
+if [ "${do_extract}" = "Y" ]
+then
+	[ -n "${debug}" ] && echo ${Cmd}: Extract sar data from sar file located in `pwd`
+	filelist=`ls -rt sa[0-3]*`
+	ndays=`echo ${filelist} | wc -w | sed -e 's/^  *//' `
+	shour=` gawk '{ print $1 }' ${TSFILE} `
+	ehour=` gawk '{ print $3 }' ${TSFILE} `
+	[ -n "${debug}" ] && echo ${Cmd}: shour = $shour   ehour = $ehour
+	[ -n "${debug}" ] && echo ${Cmd}: SAR file list = $filelist
+	[ -n "${debug}" ] && echo ${Cmd}: ndays = $ndays
+
+	cnt=1
+	arglist="-s ${shour}"
+	for sarfile in ${filelist}
+	do
+		if [ ${cnt} -eq ${ndays} ]
+		then
+			arglist="${arglist} -e ${ehour}"
+		fi
+		[ -n "${debug}" ] && echo ${Cmd}: loop cnt = $cnt  ndays = $ndays
+		[ -n "${debug}" ] && echo ${Cmd}: SAR file = ${sarfile}  arglist = $arglist
+		sar -b ${arglist} -f ${sarfile} >> sar-b
+		sar -B ${arglist} -f ${sarfile} >> sar-B
+		sar -c ${arglist} -f ${sarfile} >> sar-c
+		sar -I SUM ${arglist} -f ${sarfile} >> sar-I
+		sar -n DEV ${arglist} -f ${sarfile} >> sar-n
+                sar -n EDEV ${arglist} -f ${sarfile} >> sar-n1
+		sar -P ALL ${arglist} -f ${sarfile} >> sar-P
+		sar -q ${arglist} -f ${sarfile} >> sar-q
+		sar -r ${arglist} -f ${sarfile} >> sar-r
+		sar -R ${arglist} -f ${sarfile} >> sar-R
+		sar -w ${arglist} -f ${sarfile} >> sar-w
+		arglist=""
+		let "cnt = ${cnt} + 1"
+	done
+
+	grep -v [a-z] sar-b | grep [0-9] | sed -e 's/:.... / /' > IO.Calls.sar
+	grep -v [a-z] sar-B | grep [0-9] | sed -e 's/:.. / /' > Paging.sar
+	grep -v [a-z] sar-c | grep [0-9] | sed -e 's/:.. / /' > Procs.Created.sar
+	grep -v -i average sar-I | grep sum | sed -e 's/:.. / /' > Interupts.sar
+	grep -v -i average sar-n | grep -v IFACE | grep -v -i linux | egrep [0-9] | sed -e 's/:.. / /' > Network.sar
+	grep -v -i average sar-n1 | grep -v IFACE | grep -v -i linux | egrep [0-9] | sed -e 's/:.. / /' > NetworkErr.sar
+	grep -v [a-z] sar-P | grep [0-9] | sed -e 's/:.. / /' > CPU.sar
+	grep -v [a-z] sar-q | grep [0-9] | sed -e 's/:.. / /' > Queue.sar
+	grep -v [a-z] sar-r | grep [0-9] | sed -e 's/:.. / /' > Mem.Usage.sar
+	grep -v [a-z] sar-R | grep [0-9] | sed -e 's/:.. / /' > Mem.sar
+	grep -v [a-z] sar-w | grep [0-9] | sed -e 's/:.. / /' > Context.Switch.sar
+	#rm -f sa*
+	chmod 666 *
+fi
+
+[ -n "${debug}" ] && echo ${Cmd}: Ended `date`

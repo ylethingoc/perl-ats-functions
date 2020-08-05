@@ -1,0 +1,93 @@
+config
+set eventLog typeAdmin debug fileCount 100 fileSize 50000
+set eventLog typeAdmin debug filterLevel info
+set eventLog typeAdmin system filterLevel info
+commit
+set ss7 node node1 networkIndicator nat0 networkAppearance 666 pointCode 40-40-40 pointCodeFormat networkClusterMember servicesList sccp,tup,isup ss7ProtocolVariant base ss7ProtocolType ansi sccpTimerProfileName defaultANSI 
+commit
+set ss7 node node1 state enable
+commit
+set ss7 node node1 mode in
+commit
+set sigtran sctpProfile sctpTest
+commit
+set sigtran sctpProfile sctpTest associationMaxRetransmitsSingleHomed 4
+commit
+set sigtran sctpProfile sctpTest state enable
+commit
+set sigtran sctpAssociation gsxCE0Active localIpAddress1 @@@CE0INT0IP@@@ localIpAddress2 @@@CE0INT1IP@@@ localPort 2905 remoteIpAddress1 @@@GSXMNS11IP@@@ remoteIpAddress2 @@@GSXMNS12IP@@@ remotePort 2905 connectionMode passive sctpProfileName sctpTest
+set sigtran sctpAssociation gsxCE1Active localIpAddress1 @@@CE1INT0IP@@@ localIpAddress2 @@@CE1INT1IP@@@ localPort 2905 remoteIpAddress1 @@@GSXMNS11IP@@@ remoteIpAddress2 @@@GSXMNS12IP@@@ remotePort 2905 connectionMode passive sctpProfileName sctpTest
+set sigtran sctpAssociation gsxCE0Standby localIpAddress1 @@@CE0INT0IP@@@ localIpAddress2 @@@CE0INT1IP@@@ localPort 2905 remoteIpAddress1 @@@GSXMNS21IP@@@ remoteIpAddress2 @@@GSXMNS22IP@@@ remotePort 2905 connectionMode passive sctpProfileName sctpTest
+set sigtran sctpAssociation gsxCE1Standby localIpAddress1 @@@CE1INT0IP@@@ localIpAddress2 @@@CE1INT1IP@@@ localPort 2905 remoteIpAddress1 @@@GSXMNS21IP@@@ remoteIpAddress2 @@@GSXMNS22IP@@@ remotePort 2905 connectionMode passive sctpProfileName sctpTest
+set sigtran sctpAssociation stpMgtsCE0Single localIpAddress1 @@@CE0EXT0IP@@@ localPort 2905 remoteIpAddress1 10.33.1.6 remotePort 2905 connectionMode active 
+set sigtran sctpAssociation stpMgtsCE1Single localIpAddress1 @@@CE0EXT1IP@@@ localPort 2905 remoteIpAddress1 10.33.1.6 remotePort 2001 connectionMode active 
+commit
+set sigtran sctpAssociation gsxCE0Active state enable
+set sigtran sctpAssociation gsxCE1Active state enable
+set sigtran sctpAssociation gsxCE1Standby state enable
+set sigtran sctpAssociation gsxCE0Standby state enable
+set sigtran sctpAssociation stpMgtsCE1Single state enable
+set sigtran sctpAssociation stpMgtsCE0Single state enable
+commit
+set sigtran sctpAssociation gsxCE0Active mode in
+set sigtran sctpAssociation gsxCE1Active mode in
+set sigtran sctpAssociation gsxCE0Standby mode in
+set sigtran sctpAssociation gsxCE1Standby mode in
+set sigtran sctpAssociation stpMgtsCE0Single mode in
+set sigtran sctpAssociation stpMgtsCE1Single mode in
+commit
+set m3ua aspLinkSet stpMgtsCE0Single nodeName node1
+set m3ua aspLinkSet stpMgtsCE1Single nodeName node1
+commit
+set m3ua aspLinkSet stpMgtsCE0Single state enable
+set m3ua aspLinkSet stpMgtsCE1Single state enable
+commit
+set m3ua aspLink stpMgtsCE0Single m3uaAspLinkSetName stpMgtsCE0Single sctpAssociationName stpMgtsCE0Single 
+set m3ua aspLink stpMgtsCE1Single m3uaAspLinkSetName stpMgtsCE1Single sctpAssociationName stpMgtsCE1Single 
+commit
+set m3ua aspLink stpMgtsCE0Single state enable
+set m3ua aspLink stpMgtsCE1Single state enable
+commit
+set m3ua aspLink stpMgtsCE0Single mode in
+set m3ua aspLink stpMgtsCE1Single mode in
+commit
+set m3ua aspLinkSet stpMgtsCE0Single mode in
+set m3ua aspLinkSet stpMgtsCE1Single mode in
+commit
+set m3ua sgpLink gsxCE0Active sctpAssociationName gsxCE0Active 
+set m3ua sgpLink gsxCE1Active sctpAssociationName gsxCE1Active 
+set m3ua sgpLink gsxCE0Standby sctpAssociationName gsxCE0Standby 
+set m3ua sgpLink gsxCE1Standby sctpAssociationName gsxCE1Standby 
+commit
+set m3ua sgpLink gsxCE0Active state enable
+set m3ua sgpLink gsxCE1Active state enable
+set m3ua sgpLink gsxCE0Standby state enable
+set m3ua sgpLink gsxCE1Standby state enable
+commit
+set m3ua sgpLink gsxCE0Active mode in
+set m3ua sgpLink gsxCE1Active mode in
+set m3ua sgpLink gsxCE0Standby mode in
+set m3ua sgpLink gsxCE1Standby mode in
+commit
+set ss7 isupProfile ansi
+commit
+set ss7 isupProfile ansi state enable
+commit
+set ss7 isupProfile ansi ucicSupport yes
+commit
+set ss7 destination blueJayFITDest node node1 pointCode 1-1-40 destinationType remote isupProfile ansi
+commit
+set ss7 destination blueJayFITDest state enable
+commit
+set ss7 destination blueJayFITDest mode in
+commit
+set ss7 route blueJayFITrtCE0 linkSetName stpMgtsCE0Single typeOfRoute m3uaAsp priority 2 destination blueJayFITDest  
+set ss7 route blueJayFITrtCE1 linkSetName stpMgtsCE1Single typeOfRoute m3uaAsp priority 2 destination blueJayFITDest  
+commit
+set ss7 route blueJayFITrtCE0 state enable
+set ss7 route blueJayFITrtCE1 state enable
+commit
+set ss7 route blueJayFITrtCE0 mode in
+set ss7 route blueJayFITrtCE1 mode in
+commit
+exit

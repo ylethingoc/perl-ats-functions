@@ -1,0 +1,65 @@
+##############################################################################################################
+# List of Files : csf isup_conf_info issp_conf_info iup_conf_info mtp_conf_info omni_conf_info m3ua_conf_info scmg_conf_info usam_conf_info
+# If new file needs to be added ,include filename in the line above 
+##############################################################################################################
+
+
+# Values:csf
+###############
+
+csf /Common Values/ "NO-BLOCK=1,SVCREQ-MAXTIME=3,CONNECTION-DELAY=200000,QUEUE-STAT=0,XPRT-TMO=7,TCAP-GET-MSG=1,BEGIN-TIMER=22"
+
+# Values:issp_conf_info
+###########################
+
+issp_conf_info /Common Values/ "CGB:CGBA,GRS:GRA,RSC:,REL:,ACM:REL,ANM:REL,BLA:,BLO:BLA,IAM:BLO,RES:,RLC:,CCR:BLO,SUS:,FOT:,FAR:,FAA:,FRJ:,PAM:,CPG:,CFN:,FAC:,CVR:,CVT:"
+
+# Values:isup_conf_info
+##########################
+
+isup_conf_info /Common Values/ "AS_INIT=REG,MODE=AS,LIB6022_COMPATIBLE=Y,ISUPMONLOG_COUNT=0,ISUPMONLOG_SIZE=2M,ALLOW_GRS_UCIC_RANGE=N,PARTIAL_GRP_RESP_ON_TMO=5"
+
+isup_conf_info /Common A7/ "SEND_UCIC=E,ISSP_SEND_CGB=Y,FWD_EACH_A7_GRP_MSG=Y"
+
+isup_conf_info /Common C7/ "SEND_UCIC=E,ISSP_SEND_CGB=Y"
+
+isup_conf_info /Common J7/ "GRS_SPECIAL_HANDLING=Y"
+
+# Values:iup_conf_info
+#########################
+
+iup_conf_info /Common Values/ "AS_INIT=REG"
+
+iup_conf_info /Common C7/ "MODE=AS,LIB6022_COMPATIBLE=Y"
+
+# Values:mtp_conf_info
+#########################
+
+mtp_conf_info /Common Values/ "TFP_UNPROV_PC=Y"
+
+mtp_conf_info /Common J7/ "J7_SLC_LOADSHR=Y,J7_IDLE_DETECT=Y,J7_FSN_BSN_HANDLING=NTT"
+
+mtp_conf_info /Common A7/ "CLEAR_PRI=N"
+
+mtp_conf_info /Common C7/ "CLEAR_PRI=Y"
+
+# Values:omni_conf_info
+###########################
+
+omni_conf_info /Common GR/ "SG_VSTP=TRUE,UA_GEOGRAPHIC_REDUNDANCY=TRUE"
+
+omni_conf_info /Common CS/ "MAX_RST=3500"
+
+omni_conf_info /Common A7/ "8_BIT_SLS"
+
+omni_conf_info /Common J7/ "J7_NTT"
+
+# Values:m3ua_conf_info
+###########################
+
+m3ua_conf_info /Common GR/ "M3UA_NB_L3_S7IP=2,M3UA_NB_IPS7=2,M3UA_MAX_RKEY=4095,M3UA_DEREG_DEL_DCIC=TRUE,M3UA_MAX_RK_LS=2800,M3UA_MAX_RK_PC=1000,M3UA_MAX_RK_PC_HASH=1009,M3UA_MAX_CICSET=64000"
+
+# Values:usam_conf_info
+##########################
+
+usam_conf_info /Common GR/ "MAX_NB_FILE=10,MAX_REM_PEER=256"

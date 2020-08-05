@@ -1,0 +1,281 @@
+#!/usr/bin/expect
+
+#exp_internal -f  upgrade.log 0
+
+set systemTime [clock seconds]
+set time [clock format $systemTime -format %a_%b_%d_%Y_%H_%M_%S]
+append newfile "~/ats_repos/lib/perl/SonusQA/PSX/Logs/upgradePsxV3700Standby_To11_0_${time}.log"
+set timestamp [timestamp -format %Y-%m-%d_%H:%M]
+
+
+log_file -noappend "$newfile";
+
+set send_slow {1 0.02}
+
+set masteriloip [lindex $argv 0]
+set masterip [lindex $argv 1]
+set build_path [lindex $argv 2]
+set iso [lindex $argv 3]
+
+set timeout 50
+
+spawn bash -c "ssh-keygen -f ~/.ssh/known_hosts -R $masterip"
+#spawn bash -c "ssh-keygen -R $masterip"
+
+sleep 10
+
+#spawn ssh -o ServerAliveInterval=60  -o StrictHostKeyChecking=no root@10.54.48.74;
+spawn ssh -o ServerAliveInterval=60  -o StrictHostKeyChecking=no Administrator@$masteriloip;
+set sshID $spawn_id
+
+
+expect -re ".*password:"
+send -s "Sonus!@#\r"
+
+sleep 5
+
+expect "</>hpiLO->"
+
+sleep 5
+
+
+send -s "textcons\r"
+
+sleep 5
+
+expect {
+
+    timeout { send_user "textcons not launched\n"; exit 0 }
+
+    -re ".*Press.*Esc.*to return to the CLI Session"
+
+    }
+
+set timeout 15
+
+sleep 5
+
+send -s "\r"
+
+sleep 5
+
+send -s "\r"
+
+sleep 5
+
+expect {
+
+    -re ".*]#" { send -s "exit\r" ;sleep 5;  exp_continue }
+
+    -re ".*login:" { send -s "root\r" ; sleep 5 }
+
+      }
+
+expect  -re ".*Password:" { send -s "sonus\r" }
+
+sleep 5
+
+expect -re ".*]#"
+
+sleep 5
+
+set timeout 40
+
+send -s "sed -i \'/Defaults\s\+requiretty/s/^/#/\' /etc/sudoers\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+log_user 0
+
+send -s "rpm -qa SONSss\r"
+
+sleep 5
+
+expect -re "SONSss-.*.x86_64"
+
+set version $expect_out(0,string)
+
+puts "Base version is $version"
+
+if {[string match "*V09.01*" $version] || [string match "*V09.00*" $version] || [string match "*V08.04*" $version] } {
+
+    send -s "/etc/init.d/init.sonusAgent stop\r"
+
+    sleep 5
+
+    expect -re ".*]#"
+
+    send -s "chmod -x /opt/sonus/sonusComm/sbin/init.sonusAgent\r"
+
+    sleep 5
+
+    expect -re ".*]#"
+
+    send -s "/etc/init.d/ssoftswitch stop\r"
+
+    sleep 5
+
+    expect -re ".*]#"
+
+    send -s "chkconfig ssoftswitch off\r"
+
+    sleep 5
+
+    expect -re ".*]#"
+
+   }
+
+log_user 1
+
+sleep 5
+
+send -s "mkdir -p /mnt/install\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+
+send -s "cd /home/admin\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "rm -rf *\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+set timeout 1200
+
+send -s "scp  -o StrictHostKeyChecking=no ajames@10.54.81.66:$build_path /home/admin\r"
+
+sleep 5
+
+expect -re ".*password:"
+send -s "mov123\r"
+
+expect "100%"
+
+set timeout 20
+
+expect -re "#"
+
+send  -s "cd /home/admin\r"
+
+sleep 5
+
+expect -re "#"
+
+send -s "mount -o loop $iso /mnt/install\r"
+
+sleep 5
+
+send  -s "cd /mnt/install/Sonus/scripts\r"
+
+sleep 5
+
+expect -re "#"
+
+send  -s "./upgradePlatform\r"
+
+sleep 5
+
+set timeout 2400
+
+expect {
+
+       timeout { send_user "\nReboot prompt not seen after 45 mins\n"; }
+
+       -re "Execute reboot command to reboot the system.*" { sleep 5; send  -s "reboot -- -r\r" }
+
+       -re "Rebooting system" { send_user "\nReboot prompt found\n" } 
+
+       } 
+
+send_user "\n"
+send_user ">>>>>  Timestamp after reboot @ [timestamp -format %c] <<<<<\n"
+send_user "\n"
+
+sleep 10
+
+set accounts [list ssuser oracle root admin ]
+
+array set passwords {ssuser ssuser oracle oracle root sonus admin admin}
+
+set timeout 120 
+
+
+foreach accnt $accounts {
+
+    expect {
+
+        timeout { send_user "Did not get pattern - Enter new password for $accnt\n" ; send_user ">>>>>  Timestamp after timeout waiting for ssuser prompt @ [timestamp -format %c] <<<<<\n" ; exit 0 }
+
+      -timeout 7200  "Enter new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r"; send_user "NEW PASSWORD ENTERED FOR $accnt is $passwords($accnt)\n" } 
+	  
+	  }
+	  
+    sleep 10	  
+	  
+    expect {	  
+		
+	   timeout { send_user "Did not get pattern - Re-type new password for $accnt\n" ; exit 0 }			
+
+      "Re-type new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r" ;  send_user "NEW PASSWORD RE-ENTERED FOR $accnt is $passwords($accnt)\n"  }
+
+        }
+	
+    sleep 10	
+	
+    expect {
+
+		timeout { send_user "Did not get pattern - Please confirm the above input\n" ; exit 0 }			
+		
+		 -re "Please confirm the above input.*" { sleep 10; send   -s "y\r" ;  send_user "CONFIRMED INPUT FOR FOR $accnt\n" }
+		 
+		}
+		
+    sleep 10		
+		
+    expect  {
+
+		timeout { send_user "Did not get pattern - Password for $accnt changed successfully\n" ; exit 0 }
+		
+		 -re "Password for $accnt changed successfully" { sleep 5; send_user "PASSWORD SUCCESSFULLY CHANGED FOR $accnt\n" }
+	
+		}
+
+    sleep 10
+
+
+}
+
+
+set timeout 3600
+
+
+expect {
+
+            -re "Do you want to change the Generic key" { sleep 5 ; send  -s "N\r"; sleep 5 }
+
+            timeout { send_user "Did not get pattern - Do you want to change the Generic key\n" }
+
+      }
+
+
+
+expect {
+
+      -re ".*login:" { send_user "Login screen found. Upgrade complete\n" }
+
+    timeout { send_user "Login screen not found." ; sleep 5 ; exit 0 }
+
+    
+      }
+
+exit 1

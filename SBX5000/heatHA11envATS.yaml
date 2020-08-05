@@ -1,0 +1,80 @@
+parameters:
+
+  # Helpful tips:  The contents of this file need to be edited to match
+  # the Openstack Installation and Tenant that you are using.
+  # This file provides some default values for the heat template used to 
+  # spin up an SBX - either Single or HA.
+  #
+  # In particular you should substitute in the IDs or names of the networks and
+  # subnets that have been set up in your Tenant. (Note: If your installation
+  # has many tentants and if they are likely to use the same names for their 
+  # networks, use the ID instead since it is unique. If repeated netnames are
+  # unlikely, the names will suffice.) 
+  # You can find these using the Openstack Horizon Dashboard, by navigating 
+  # to the Networks page and clicking on the network or subnet name.
+  #
+  # I strongly advise anyone who is going to use Openstack a lot to
+  # create for themselves a linux machine with the Openstack CLI tools
+  # installed on it.  You can access the Openstack CLI of an Openstack
+  # installation from a remote machine that has just the CLI tools on it.
+  # You will need to source the environment variables on the tool machine
+  # that define your Openstack login user name, pwd, tentant name and the
+  # address of the Openstack host.
+  # You might try this link: http://docs.openstack.org/cli-reference/common/cli_install_openstack_command_line_clients.html
+  # Here's an example of the ENV vars you need to use the tool:
+  #   unset OS_SERVICE_TOKEN
+  #   export OS_USERNAME=jack
+  #   export OS_PASSWORD=mypassword
+  #   export OS_AUTH_URL=http://10.8.85.8:5000/v2.0
+  #   export PS1='[\u@\h \W(jack)]\$ '
+  #
+  #   export OS_TENANT_NAME=JacksCableCo
+  #   export OS_REGION_NAME=RegionOne
+  #
+  #  Once you have set this up, you can use comands like this to find all the IDs of all the
+  #
+  #  networks:
+  #  > neutron net-list
+  #  > neutron subnet-list
+  #  .. Or on Liberty versions and forward this should also work:
+  #  > openstack network list
+  #  > openstack subnet list
+  #
+  #  Note that while the CLI can be much a much faster way to navigate lists of networks, 
+  #  the same functions can be done via the GUI, and may be recommended partice at your installation.
+  #
+  #  Be sure to replace the flavor and security_group name with either the name or ID
+  #  of a flavor or sec group that actually exist on your Openstack installation/tenant.
+  #  Comment out the name of the standby machine for standalone installs. Otherwise
+  #  you will want to leave the SBC names as they are.
+  #
+  #
+
+  # System Settings
+  image:           cSBX_V05.01.00A603
+  flavor:          m1.large
+  security_group:  sonus-sg
+  sbc_system_name: vsbcSystem
+
+  # External Network Settings
+  mgt0_ext_network: mgt0-ext
+  pkt0_ext_network: pkt0-ext
+  pkt1_ext_network: pkt1-ext
+
+  # Private Network Settings
+  private_network_mgt0: mgt0-int
+  private_network_ha:   ha-int
+  private_network_pkt0: pkt0-int
+  private_network_pkt1: pkt1-int
+
+  # Private Subnet Settings
+  private_subnet_mgt0: mgt0-int-subnet
+  private_subnet_ha:   ha-int-subnet
+  private_subnet_pkt0: pkt0-int-subnet
+  private_subnet_pkt1: pkt1-int-subnet
+
+  # Instance Specific Settings
+  sbc_active_name:  vsbc1
+  #  COMMENT OUT THE STANDBY NAME IN A STANDALONE SETUP
+  sbc_standby_name: vsbc2
+

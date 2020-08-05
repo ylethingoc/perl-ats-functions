@@ -1,0 +1,668 @@
+heat_template_version: 2014-10-16
+description: Template to setup and deploy a 1x1 HA vSBC compute instances
+# Parameters required from user or upstream application/orchestration to setup and launch 1x1 HA vSBC compute instances
+
+parameter_groups:
+- label: System Settings
+  description: System Level Settings
+  parameters:
+  - image
+  - flavor
+  - security_group
+  - sbc_system_name
+
+- label: Instance Specific Settings
+  description: Instance Specific Settings
+  parameters:
+  - sbc_active_name
+  - sbc_standby_name
+
+- label: External Network Settings
+  description: External Network Settings
+  parameters:
+  - mgt0_ext_network
+  - pkt0_ext_network
+  - pkt1_ext_network
+  - floating_ip_count_mgt0
+  - logical_management_ip
+  - floating_ip_count_pkt0
+  - floating_ip_count_pkt1
+
+- label: Enable Reverse NAT
+  description: Enable reverse nat for ports
+  parameters:
+  - reverse_nat_pkt0
+  - reverse_nat_pkt1
+
+- label: Private Network Settings
+  description: External Network Settings
+  parameters:
+  - private_network_mgt0
+  - private_network_ha
+  - private_network_pkt0
+  - private_network_pkt1
+
+- label: Private Subnet Settings
+  description: Subnet Settings
+  parameters:
+  - private_subnet_mgt0
+  - private_subnet_ha
+  - private_subnet_pkt0
+  - private_subnet_pkt1
+
+- label: EMS Settings
+  description: EMS Settings
+  parameters:
+  - ems_user_name
+  - ems_password
+  - ems_ip
+  - cluster_id
+  - download_config
+
+parameters:
+
+############################
+# System Level Settings
+############################
+
+  image:
+    type: string
+    label: Image Name
+    description: Image to be used for launching the instance(s)
+    constraints:
+      - custom_constraint: 'glance.image'
+
+  flavor:
+    type: string
+    label: Flavor
+    description: Flavor to be used for instance(s)
+
+  security_group:
+    type: string
+    label: Security Group
+    description: Security group of instance(s)
+
+  sbc_system_name:
+    type: string
+    label: SBC System Name
+    description: SBC system name
+    constraints:
+      - length: { min: 0, max: 26 }
+        description: "Enter valid system name. Length of this string should be less than 26"
+      - allowed_pattern: "^[A-Za-z]{1}[-A-Za-z0-9]*[A-Za-z0-9]{1}$"
+        description: "Enter valid system name. Regex: ^[A-Za-z]{1}[-A-Za-z0-9]*[A-Za-z0-9]{1}$ "
+
+############################
+# External Network Settings
+############################
+
+  mgt0_ext_network:
+    type: string
+    label: Management Port Public Network Name or ID
+    description: Public network with floating IP addresses for mgt0 (used only if "Floating IP Count" is non-zero for mgt0).
+    constraints:
+      - custom_constraint: 'neutron.network'
+
+  pkt0_ext_network:
+    type: string
+    label: Packet Port 0 Public Network Name or ID
+    description: Public network with floating IP addresses for pkt0 (used only if "Floating IP Count" is non-zero for pkt0).
+    constraints:
+      - custom_constraint: 'neutron.network'
+
+  pkt1_ext_network:
+    type: string
+    label: Packet Port 1 Public Network Name or ID
+    description: Public network with floating IP addresses for pkt1 (used only if "Floating IP Count" is non-zero for pkt1).
+    constraints:
+      - custom_constraint: 'neutron.network'
+
+#############################
+# Setting up the count values
+#############################
+
+  floating_ip_count_mgt0:
+    type: number
+    label: Number of Floating IPs on mgt0
+    description: Number of public IPs on mgt0.
+    default: 0
+    constraints:
+      - range: { min: 0, max: 1 }
+
+  logical_management_ip:
+    type: number
+    label: Number of Logical IPs on mgt0
+    description: Number of logical IPs on mgt0.
+    default: 0
+    constraints:
+      - range: { min: 0, max: 1 }
+
+  floating_ip_count_pkt0:
+    type: number
+    label: Number of Floating IPs on pkt0
+    description: Number of public IPs on pkt0.
+    default: 0
+    constraints:
+      - range: { min: 0, max: 1 }
+
+  floating_ip_count_pkt1:
+    type: number
+    label: Number of Floating IPs on pkt1
+    description: Number of public IPs on pkt1.
+    default: 0
+    constraints:
+      - range: { min: 0, max: 1 }
+
+#################################################
+# Enable/Disable Reverse NAT feature on the ports
+#################################################
+
+  reverse_nat_pkt0:
+    type: string
+    label: Reverse NAT on pkt0
+    description: Enable/Disable reverse NAT on pkt0.
+    default: True
+    constraints:
+      - allowed_values: [True,False]
+
+  reverse_nat_pkt1:
+    type: string
+    label: Reverse NAT on pkt1
+    description: Enable/Disable reverse NAT on pkt1.
+    default: True
+    constraints:
+      - allowed_values: [True,False]
+
+############################
+# Private Network Settings
+############################
+
+  private_network_mgt0:
+    type: string
+    label: Management Port Private Network Name or ID
+    description: Name/ID of private network for mgt0.
+    constraints:
+      - custom_constraint: 'neutron.network'
+
+  private_network_ha:
+    type: string
+    label: HA Port Private Network Name or ID
+    description: Name/ID of private network for ha0.
+    constraints:
+      - custom_constraint: 'neutron.network'
+
+  private_network_pkt0:
+    type: string
+    label: Packet Port 0 Private Network Name or ID
+    description: Name/ID of private network for pkt0.
+    constraints:
+      - custom_constraint: 'neutron.network'
+
+  private_network_pkt1:
+    type: string
+    label: Packet Port 1 Private Network Name or ID
+    description: Name/ID of private network for pkt1.
+    constraints:
+      - custom_constraint: 'neutron.network'
+
+############################
+# Private Subnet Settings
+############################
+
+  private_subnet_mgt0:
+    type: string
+    label: Management Port Private Subnet Name or ID
+    description: Name/ID of private subnet for mgt0.
+
+  private_subnet_ha:
+    type: string
+    label: HA Port Private Subnet Name or ID
+    description: Name/ID of private subnet for ha0.
+
+  private_subnet_pkt0:
+    type: string
+    label: Packet Port 0 Private Subnet Name or ID
+    description: Name/ID of private subnet for pkt0.
+
+  private_subnet_pkt1:
+    type: string
+    label: Packet Port 1 Private Subnet Name or ID
+    description: Name/ID of private subnet for pkt1.
+
+############################
+# Instance Specific Settings
+############################
+  sbc_active_name:
+    type: string
+    label: SBC (Assigned) Active Instance Name
+    description: SBC active instance name.
+    constraints:
+      - length: { min: 0, max: 63 }
+        description: "Enter valid active instance name. Length of this string should be less than 63"
+      - allowed_pattern: "^[A-Za-z]{1}[-A-Za-z0-9.]*[A-Za-z0-9]{1}$"
+        description: "Enter valid active instance name. Regex: ^[A-Za-z]{1}[-A-Za-z0-9.]*[A-Za-z0-9]{1}$ "
+
+  sbc_standby_name:
+    type: string
+    label: SBC (Assigned) Standby Instance Name
+    description: SBC standby instance name.
+    constraints:
+      - length: { min: 0, max: 63 }
+        description: "Enter valid standby instance name. Length of this string should be less than 63"
+      - allowed_pattern: "^[A-Za-z]{1}[-A-Za-z0-9.]*[A-Za-z0-9]{1}$"
+        description: "Enter valid standby instance name. Regex: ^[A-Za-z]{1}[-A-Za-z0-9.]*[A-Za-z0-9]{1}$ "
+
+################
+# EMS Settings
+################
+  ems_user_name:
+    type: string
+    label: EMS User Name
+    description: User name for registering with EMS
+    default: "None"
+
+  ems_password:
+    type: string
+    label: EMS Password
+    description: EMS registration password
+    hidden: true
+    default: "None"
+
+  ems_ip:
+    type: string
+    label: EMS IP
+    description: EMS IP Address.
+    default: ""
+
+  cluster_id:
+    type: string
+    label: Cluster ID
+    description: EMS cluster identifier.
+    default: ""
+
+  download_config:
+    type: string
+    label: Download Configuration from EMS
+    description: Download Configuration from EMS
+    default: True
+    constraints:
+      - allowed_values: [True,False]
+
+# Resource definitions for all openstack objects to be configured during
+# template execution
+resources:
+
+  # Create standby vSBC instance
+  vSBC_STANDBY:
+    type: OS::Nova::Server
+    properties:
+      name: { list_join: ['-', [ { get_param: "OS::stack_name" }, '2']] }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      config_drive: True
+
+      # Attach previously created network ports to the instnace
+      networks:
+        - port: { get_resource: mgt0_port2 }
+        - port: { get_resource: ha0_port2 }
+        - port: { get_resource: pkt0_port2 }
+        - port: { get_resource: pkt1_port2 }
+
+      # Publish the assigned floating IP addresses with appended subnet mask to the openstack metadata service.
+      # Subnet prefix for floating ips not used - hard coded to 32 for consistencey.
+      metadata:
+
+        FloatingIPv4Mgt0: { get_attr: [mgt0_floating_ip2, floating_ip_address] }
+        LogicalIPv4Mgt0: { get_attr: [mgt0_log_floating_ip1, floating_ip_address] }
+        FloatingIPv4Pkt0: { get_attr: [pkt0_floating_ip, floating_ip_address] }
+        FloatingIPv4Pkt1: { get_attr: [pkt1_floating_ip, floating_ip_address] }
+
+        VirtualIPv4Mgt0: { list_join: ['/', [ { get_attr: [mgt0_vip_port, fixed_ips, 0, ip_address] }, '24']] }
+        VirtualIPv4Pkt0: { list_join: ['/', [ { get_attr: [pkt0_vip_port, fixed_ips, 0, ip_address] }, '24']] }
+        VirtualIPv4Pkt1: { list_join: ['/', [ { get_attr: [pkt1_vip_port, fixed_ips, 0, ip_address] }, '24']] }
+
+      # Set the format to RAW to pass data directly as userdata set the floating and virtual IP counts
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+                #cloud-config
+                write_files:
+                -   content: |
+                        {
+                          "FloatingIPCountPkt0"     : "$p0fic",
+                          "FloatingIPCountPkt1"     : "$p1fic",
+                          "ReverseNatPkt0"          : "$enablePkt0",
+                          "ReverseNatPkt1"          : "$enablePkt1",
+                          "CERole"                  : "STANDBY",
+                          "CEName"                  : "$ce_name",
+                          "SystemName"              : "$system_name",
+                          "PeerCEName"              : "$peer_name",
+                          "PeerCEHa0IPv4Prefix"     : "24",
+                          "PeerCEHa0IPv4Address"    : "$peer_ipv4_ha0",
+                          "PeerCEMgt0IPv4Prefix"    : "24",
+                          "PeerCEMgt0IPv4Address"   : "$peer_ipv4_mgt0",
+                          "EmsUsername"             : "$ems_user_name",
+                          "EmsPassword"             : "$ems_password",
+                          "EmsIP"                   : "$ems_ip",
+                          "EmsDownloadConfig"       : "$downloadConfig",
+                          "EmsPrivateNodeParameters": { "cluster_id": "$cluster_id" , "vnfc_id": "$vnfc_id" }
+                        }
+                    path: /opt/sonus/userData.json
+
+                  users:
+                    - name: linuxadmin
+                      ssh-authorized-keys:
+                        - ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA4oGIi+0mRS9Q25ln5/gKe1mmR7cfVuFxRQONVbjq8y+JB0g2T49b1Bf8xRhyhkKgdbIbEWdcmboSpTegt6zM0rz6Yw/73c3NVy60CX47t55GCCFYXxt3uwgRlN/9KX1mETCYOSD5AZ7e9YXvbd6/hUKkK/o8Zrhch9ckR2nVSe0v1wob4MMhmC1e9LV5tvk6zAIdmTWOYcrg0Yd6yHRQbNjlVFpQ147TPGy12+tDytqEW+09DQZqvhuiwSyxk3lBlNJYfCT2VidsS2+MQYD+t2REc65vcq/EvXuyuwpvv/IIjX2BBMCG7fMXkGh0wnIPoHbUCNfq1Zr2JGqZ6D8GIQ==
+                    
+          params:
+              $p0fic:          { get_param: floating_ip_count_pkt0 }
+              $p1fic:          { get_param: floating_ip_count_pkt1 }
+              $enablePkt0:     { get_param: reverse_nat_pkt0 }
+              $enablePkt1:     { get_param: reverse_nat_pkt1 }
+              $ce_name:        { get_param: sbc_standby_name }
+              $system_name:    { get_param: sbc_system_name }
+              $peer_name:      { get_param: sbc_active_name }
+              $peer_ipv4_ha0:  { get_attr: [ha0_port1, fixed_ips, 0, ip_address] }
+              $peer_ipv4_mgt0: { get_attr: [mgt0_port1, fixed_ips, 0, ip_address] }
+              $ems_user_name:  { get_param: ems_user_name }
+              $ems_password:   { get_param: ems_password }
+              $ems_ip:         { get_param: ems_ip }
+              $cluster_id:     { get_param: cluster_id }
+              $downloadConfig: { get_param: download_config }
+              $vnfc_id:        { list_join: ['-', [ { get_param: "OS::stack_name" }, { get_param: cluster_id }, '2']] }
+
+  # Create active vSBC instance
+  vSBC_ACTIVE:
+    type: OS::Nova::Server
+    properties:
+      name: { list_join: ['-', [ { get_param: "OS::stack_name" }, '1']] }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      config_drive: True
+
+      # Attach previously created network ports to the instance
+      networks:
+        - port: { get_resource: mgt0_port1 }
+        - port: { get_resource: ha0_port1 }
+        - port: { get_resource: pkt0_port1 }
+        - port: { get_resource: pkt1_port1 }
+
+      # Publish the assigned floating IP addresses with appended subnet mask to the openstack metadata service.
+      # Subnet prefix for floating ips not used - hard coded to 32 for consistencey.
+      metadata:
+        FloatingIPv4Mgt0: { get_attr: [mgt0_floating_ip1, floating_ip_address] }
+        LogicalIPv4Mgt0: { get_attr: [mgt0_log_floating_ip1, floating_ip_address] }
+        FloatingIPv4Pkt0: { get_attr: [pkt0_floating_ip, floating_ip_address] }
+        FloatingIPv4Pkt1: { get_attr: [pkt1_floating_ip, floating_ip_address] }
+
+
+        VirtualIPv4Mgt0: { list_join: ['/', [ { get_attr: [mgt0_vip_port, fixed_ips, 0, ip_address] }, '24']] }
+        VirtualIPv4Pkt0: { list_join: ['/', [ { get_attr: [pkt0_vip_port, fixed_ips, 0, ip_address] }, '24']] }
+        VirtualIPv4Pkt1: { list_join: ['/', [ { get_attr: [pkt1_vip_port, fixed_ips, 0, ip_address] }, '24']] }
+
+      # Set the format to RAW to pass data directly as userdata set the floating and virtual IP counts
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+                #cloud-config
+                write_files:
+                -   content: |
+                        {
+                          "FloatingIPCountPkt0"     : "$p0fic",
+                          "FloatingIPCountPkt1"     : "$p1fic",
+                          "ReverseNatPkt0"          : "$enablePkt0",
+                          "ReverseNatPkt1"          : "$enablePkt1",
+                          "CERole"                  : "ACTIVE",
+                          "CEName"                  : "$ce_name",
+                          "SystemName"              : "$system_name",
+                          "PeerCEName"              : "$peer_name",
+                          "PeerCEHa0IPv4Prefix"     : "24",
+                          "PeerCEHa0IPv4Address"    : "$peer_ipv4_ha0",
+                          "PeerCEMgt0IPv4Prefix"    : "24",
+                          "PeerCEMgt0IPv4Address"   : "$peer_ipv4_mgt0",
+                          "EmsUsername"             : "$ems_user_name",
+                          "EmsPassword"             : "$ems_password",
+                          "EmsIP"                   : "$ems_ip",
+                          "EmsDownloadConfig"       : "$downloadConfig",
+                          "EmsPrivateNodeParameters": { "cluster_id": "$cluster_id" , "vnfc_id": "$vnfc_id" }
+                        }
+                    path: /opt/sonus/userData.json
+
+                  users:
+                    - name: linuxadmin
+                      ssh-authorized-keys:
+                        - ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA4oGIi+0mRS9Q25ln5/gKe1mmR7cfVuFxRQONVbjq8y+JB0g2T49b1Bf8xRhyhkKgdbIbEWdcmboSpTegt6zM0rz6Yw/73c3NVy60CX47t55GCCFYXxt3uwgRlN/9KX1mETCYOSD5AZ7e9YXvbd6/hUKkK/o8Zrhch9ckR2nVSe0v1wob4MMhmC1e9LV5tvk6zAIdmTWOYcrg0Yd6yHRQbNjlVFpQ147TPGy12+tDytqEW+09DQZqvhuiwSyxk3lBlNJYfCT2VidsS2+MQYD+t2REc65vcq/EvXuyuwpvv/IIjX2BBMCG7fMXkGh0wnIPoHbUCNfq1Zr2JGqZ6D8GIQ==
+                
+          params:
+              $p0fic:          { get_param: floating_ip_count_pkt0 }
+              $p1fic:          { get_param: floating_ip_count_pkt1 }
+              $enablePkt0:     { get_param: reverse_nat_pkt0 }
+              $enablePkt1:     { get_param: reverse_nat_pkt1 }
+              $ce_name:        { get_param: sbc_active_name  }
+              $system_name:    { get_param: sbc_system_name }
+              $peer_name:      { get_param: sbc_standby_name }
+              $peer_ipv4_ha0:  { get_attr: [ha0_port2, fixed_ips, 0, ip_address] }
+              $peer_ipv4_mgt0: { get_attr: [mgt0_port2, fixed_ips, 0, ip_address] }
+              $ems_user_name:  { get_param: ems_user_name }
+              $ems_password:   { get_param: ems_password }
+              $ems_ip:         { get_param: ems_ip }
+              $cluster_id:     { get_param: cluster_id }
+              $downloadConfig: { get_param: download_config }
+              $vnfc_id:        { list_join: ['-', [ { get_param: "OS::stack_name" }, { get_param: cluster_id }, '1']] }
+
+
+  # Create the four required virtual nics (ports) to attach to virtual SBC instance 1
+
+  mgt0_vip_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param : private_network_mgt0 }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_mgt0 }
+      security_groups:
+        - { get_param: security_group }
+
+  mgt0_port1:
+    type: OS::Neutron::Port
+    properties:
+      allowed_address_pairs: [{"ip_address": { get_attr: [mgt0_vip_port, fixed_ips, 0, ip_address] }}]
+      network: { get_param : private_network_mgt0 }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_mgt0 }
+      security_groups:
+        - { get_param: security_group }
+
+  ha0_port1:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param : private_network_ha }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_ha }
+
+  pkt0_vip_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param : private_network_pkt0 }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_pkt0 }
+      security_groups:
+        - { get_param: security_group }
+
+  pkt0_port1:
+    type: OS::Neutron::Port
+    properties:
+      allowed_address_pairs: [{"ip_address": { get_attr: [pkt0_vip_port, fixed_ips, 0, ip_address] }}]
+      network: { get_param : private_network_pkt0 }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_pkt0 }
+      security_groups:
+        - { get_param: security_group }
+
+
+  pkt1_vip_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param : private_network_pkt1 }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_pkt1 }
+      security_groups:
+        - { get_param: security_group }
+
+
+  pkt1_port1:
+    type: OS::Neutron::Port
+    properties:
+      allowed_address_pairs: [{"ip_address": { get_attr: [pkt1_vip_port, fixed_ips, 0, ip_address] }}]
+      network: { get_param : private_network_pkt1 }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_pkt1 }
+      security_groups:
+        - { get_param: security_group }
+
+
+  # Create the four required virtual nics (ports) to attach to virtual SBC instance 2
+  mgt0_port2:
+    type: OS::Neutron::Port
+    properties:
+      allowed_address_pairs: [{"ip_address": { get_attr: [mgt0_vip_port, fixed_ips, 0, ip_address] }}]
+      network: { get_param : private_network_mgt0 }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_mgt0 }
+      security_groups:
+        - { get_param: security_group }
+
+  ha0_port2:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param : private_network_ha }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_ha }
+
+  pkt0_port2:
+    type: OS::Neutron::Port
+    depends_on: pkt0_vip_port
+    properties:
+      allowed_address_pairs: [{"ip_address": { get_attr: [pkt0_vip_port, fixed_ips, 0, ip_address] }}]
+      network: { get_param : private_network_pkt0 }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_pkt0 }
+      security_groups:
+        - { get_param: security_group }
+
+
+  pkt1_port2:
+    type: OS::Neutron::Port
+    depends_on: pkt1_vip_port
+    properties:
+      allowed_address_pairs: [{"ip_address": { get_attr: [pkt1_vip_port, fixed_ips, 0, ip_address] }}]
+      network: { get_param : private_network_pkt1 }
+      fixed_ips:
+        - subnet: { get_param: private_subnet_pkt1 }
+      security_groups:
+        - { get_param: security_group }
+
+
+  # Create and associate three floating IP addresses to the mgt0, pkt0 and pkt1 ports of instance 1
+
+  mgt0_floating_ip1:
+    type: "OS::Heat::ResourceGroup"
+    depends_on: mgt0_port1
+    properties:
+      count: { get_param: floating_ip_count_mgt0 }
+      resource_def:
+        type: OS::Neutron::FloatingIP
+        properties:
+          floating_network: { get_param: mgt0_ext_network }
+          port_id: { get_resource: mgt0_port1 }
+
+  mgt0_log_floating_ip1:
+    type: "OS::Heat::ResourceGroup"
+    depends_on: mgt0_vip_port
+    properties:
+      count: { get_param: logical_management_ip}
+      resource_def:
+        type: OS::Neutron::FloatingIP
+        properties:
+          floating_network: { get_param: mgt0_ext_network }
+          port_id: { get_resource: mgt0_vip_port }
+
+  pkt0_floating_ip:
+    type: "OS::Heat::ResourceGroup"
+    depends_on: pkt0_vip_port
+    properties:
+      count: { get_param: floating_ip_count_pkt0 }
+      resource_def:
+        type: OS::Neutron::FloatingIP
+        properties:
+          floating_network: { get_param: pkt0_ext_network }
+          port_id: { get_resource: pkt0_vip_port }
+
+
+  pkt1_floating_ip:
+    type: "OS::Heat::ResourceGroup"
+    depends_on: pkt1_vip_port
+    properties:
+      count: { get_param: floating_ip_count_pkt1 }
+      resource_def:
+        type: OS::Neutron::FloatingIP
+        properties:
+          floating_network: { get_param: pkt1_ext_network }
+          port_id: { get_resource: pkt1_vip_port }
+
+
+  # Create and associate floating IP addresses to mgt0 of instance 2
+
+  mgt0_floating_ip2:
+    type: "OS::Heat::ResourceGroup"
+    depends_on: mgt0_port2
+    properties:
+      count: { get_param: floating_ip_count_mgt0 }
+      resource_def:
+        type: OS::Neutron::FloatingIP
+        properties:
+          floating_network: { get_param: mgt0_ext_network }
+          port_id: { get_resource: mgt0_port2 }
+
+# output some stuff for debug
+outputs:
+  instance1_name:
+    description: Name of the instance
+    value: { get_attr: [vSBC_ACTIVE, name] }
+
+  instance1_mgt0_Public_ip:
+    description: mgt0 floating IP address for the instance
+    value: { get_attr: [mgt0_floating_ip1, floating_ip_address] }
+
+  instance2_name:
+    description: Name of the instance
+    value: { get_attr: [vSBC_STANDBY, name] }
+
+  instance2_mgt0_Public_ip:
+    description: mgt0 floating IP address for the instance
+    value: { get_attr: [mgt0_floating_ip2, floating_ip_address] }
+
+  pkt0_Public_ip:
+    description: Public IP address used for the pkt0 interfaces
+    value: { get_attr: [pkt0_floating_ip, floating_ip_address] }
+
+  pkt0_Virtual_ip:
+    description: Virtual IP address used for the pkt0 interfaces
+    value: { get_attr: [pkt0_vip_port, fixed_ips, 0, ip_address] }
+
+  pkt1_Public_ip:
+    description: Public IP address used for the pkt1 interfaces
+    value: { get_attr: [pkt1_floating_ip, floating_ip_address] }
+
+  pkt1_Virtual_ip:
+    description: Virtual IP address used for the pkt1 interfaces
+    value: { get_attr: [pkt1_vip_port, fixed_ips, 0, ip_address] }
+
+  mgt0_Virtual_ip:
+    description: Virtual IP address used for the logical mgt0 interfaces
+    value: { get_attr: [mgt0_vip_port, fixed_ips, 0, ip_address] }
+
+  mgt0_Logical_Public_ip:
+    description: Floating IP address used for the logical mgt0 interfaces
+    value: { get_attr: [mgt0_log_floating_ip1, floating_ip_address] }

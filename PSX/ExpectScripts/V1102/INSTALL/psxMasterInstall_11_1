@@ -1,0 +1,152 @@
+#!/usr/bin/expect
+
+#exp_internal -f  expect.log 0
+set systemTime [clock seconds]
+set time [clock format $systemTime -format %a_%b_%d_%Y_%H_%M_%S]
+append newfile "~/ats_repos/lib/perl/SonusQA/PSX/Logs/psxMasterInstall_11_01_${time}.log"
+
+log_file -noappend "$newfile";
+
+set send_slow {1 0.02}
+
+set masterip [lindex $argv 0]
+
+
+set timeout 20 
+
+spawn bash -c "ssh-keygen -f ~/.ssh/known_hosts -R $masterip"
+#spawn bash -c "ssh-keygen -R $masterip" 
+
+sleep 10
+
+spawn ssh -o ServerAliveInterval=60  -o StrictHostKeyChecking=no ssuser@$masterip;
+
+expect -re ".*password:"
+send -s "ssuser\r"
+
+sleep 5
+
+expect -re "Enter new password for ssuser :"
+send -s "ssuser\r"
+
+set timeout 300
+
+set accounts [list ssuser oracle root admin ]
+
+array set passwords {ssuser ssuser oracle oracle root sonus admin admin}
+
+foreach accnt $accounts {
+
+    expect {
+
+        timeout { send_user "Did not get pattern - Enter new password for $accnt\n" ; exit 0 }
+
+      -timeout 1200  "Enter new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r"; send_user "NEW PASSWORD ENTERED FOR $accnt is $passwords($accnt)\n" }
+
+      }
+
+    sleep 10
+
+    expect {
+
+       timeout { send_user "Did not get pattern - Re-type new password for $accnt\n" ; exit 0 }
+
+      "Re-type new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r" ;  send_user "NEW PASSWORD RE-ENTERED FOR $accnt is $passwords($accnt)\n"  }
+
+        }
+
+    sleep 10
+
+    expect {
+
+        timeout { send_user "Did not get pattern - Please confirm the above input\n" ; exit 0 }
+
+         -re "Please confirm the above input.*" { sleep 10; send   -s "y\r" ;  send_user "CONFIRMED INPUT FOR FOR $accnt\n" }
+
+    
+        }
+
+    sleep 10
+
+    expect  {
+
+        timeout { send_user "Did not get pattern - Password for $accnt changed successfully\n" ; exit 0 }
+
+         -re "Password for $accnt changed successfully" { sleep 5; send_user "PASSWORD SUCCESSFULLY CHANGED FOR $accnt\n" }
+
+        }
+
+    sleep 10
+
+
+    }
+
+    set timeout 300
+
+
+    expect {
+
+    -re "Is this PSX a master or slave"  { sleep 5; send -s "M\r"; sleep 5 }
+
+    timeout { send_user "Did not find input - Is this PSX a master or slave \n"; exit 0 }
+
+    }
+
+    expect {
+
+    -re "Is this PSX a provisioning only master"  { sleep 5; send -s "N\r"; sleep 5 }
+
+    timeout { send_user "Did not find input - Is this PSX a provisioning only master \n"; exit 0 }
+
+    }
+
+     expect {
+
+    -re "Enable PSX Test Data Access on this PSX"  { sleep 5; send -s "N\r"; sleep 5 }
+
+    timeout { send_user "Did not find input - Enable PSX Test Data Access on this PSX \n"; exit 0 }
+
+    }
+
+   expect {
+
+        -re "Enable ACL Profile rule" { sleep 5; send -s "N\r"; sleep 5 }
+
+        timeout { send_user "Did not find input - Enable ACL Profile rule\n"; exit 0 }
+
+    }
+
+ set timeout 3600
+
+
+  expect {
+
+      -re "Master.*or.*Slave.*database.*M" {sleep 5}
+
+        timeout { send_user "pattern Master.*or.*Slave.*database.*M not found\n"; exit 0}
+
+   }
+
+
+    sleep 10
+
+    expect {
+
+          -re "Please confirm values.*" { sleep 5; send   -s "Y\r"; }
+
+        timeout { send_user "Did not find input - Please confirm values\n"; exit 0}
+
+      }
+
+    sleep 10
+
+    expect {
+
+      timeout { send_user "Master installation taking more than 60 mins. Please check manually\n"; exit 0 }
+
+     -re ".*is setup as a Master"
+
+      }
+
+
+exit 1

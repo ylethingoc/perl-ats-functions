@@ -1,0 +1,409 @@
+#!/usr/bin/expect
+
+#exp_internal -f  expect.log 0
+set systemTime [clock seconds]
+set time [clock format $systemTime -format %a_%b_%d_%Y_%H_%M_%S]
+append newfile "~/ats_repos/lib/perl/SonusQA/PSX/Logs/v3700ActiveInstall_11_1_${time}.log"
+
+log_file -noappend "$newfile";
+
+set send_slow {1 0.02}
+
+set activeip [lindex $argv 0]
+set activeIlomIp [lindex $argv 1]
+
+spawn bash -c "ssh-keygen -f ~/.ssh/known_hosts -R $activeip"
+
+set timeout 20
+
+spawn bash -c "scp  -o StrictHostKeyChecking=no ~/ats_repos/lib/perl/SonusQA/PSX/ExpectScripts/V1101/INSTALL/haconfig_v3700 root@$activeip:/export/home/ssuser/SOFTSWITCH/BIN"
+
+expect -re ".*password:"
+send -s "sonus\r"
+
+sleep 10
+
+spawn ssh -o ServerAliveInterval=60 -o StrictHostKeyChecking=no ssuser@$activeip;
+
+expect -re ".*password:"
+send -s "ssuser\r"
+
+sleep 5
+
+expect -re ".*>"
+send -s "su - root\r"
+
+sleep 5
+
+expect -re "Password:"
+send -s "sonus\r"
+
+expect -re ".*]#"
+
+sleep 5
+
+send -s "sed -i -e \"s/ONBOOT=no/ONBOOT=yes/g;s/BOOTPROTO=dhcp/BOOTPROTO=none/g\" /etc/sysconfig/network-scripts/ifcfg-eth7\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "echo \"IPADDR=192.168.70.100\" >> /etc/sysconfig/network-scripts/ifcfg-eth7\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "echo \"NETMASK=255.255.255.0\" >> /etc/sysconfig/network-scripts/ifcfg-eth7\r"
+
+sleep 5 
+
+expect -re ".*]#"
+
+send -s "service network restart\r"
+
+sleep 120
+
+expect -re ".*]#"
+
+sleep 5
+
+send -s "exit\r"
+
+expect eof
+
+sleep 5
+
+spawn ssh -o ServerAliveInterval=60  -o StrictHostKeyChecking=no Administrator@$activeIlomIp;
+
+expect -re ".*password:"
+send -s "Sonus!@#\r"
+
+sleep 5
+
+expect "</>hpiLO->"
+
+sleep 5
+
+send -s "textcons\r"
+
+sleep 5
+
+expect {
+
+    timeout { send_user "textcons not launched\n"; exit 0 }
+
+    -re ".*Press.*Esc.*to return to the CLI Session"
+
+    }
+
+sleep 5
+
+expect {
+
+      timeout { send_user "Login screen not found\n"; send -s "exit\r"; exp_continue }
+
+      -re "login:"
+
+      }
+
+set timeout 10
+
+send -s "root\r"
+
+sleep 5
+
+expect -re ".*Password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "cd /opt/sonus/platform/RAID\r"
+
+sleep 20 
+
+set timeout 300 
+
+send -s "./resetConfigurationIbmRaidV3700.pl --all\r"
+
+sleep 20
+
+expect {
+
+	-re  "Do you wish to continue.*"  { sleep 10; send -s "Y\r" }
+    timeout { send_user "Pattern not foud - Do you wish to continue\n";exit 0}
+
+     }
+
+sleep 10;
+
+set timeout 1200
+
+expect  {
+
+      timeout { send_user "reset RAID config failed\n"; exit 0 }
+    
+      -re "Successfully removed Cluster.*" { sleep 5  }
+        
+        }
+
+
+expect -re ".*]#"
+
+sleep 5
+
+send -s "cd /export/home/ssuser/SOFTSWITCH/BIN\r"
+
+expect  -re ".*]#"
+
+sleep 2
+
+set timeout 1800
+
+send -s "./configureHA.pl -inputfile haconfig_v3700\r"
+
+sleep 10
+
+expect {
+
+	-re "Please enter to continue,number to change prompt value,0 to exit:.*"  { sleep 10; send -s "\r\n" }
+        
+     timeout { send_user "pattern not found - Please enter to continue,number to change prompt value,0 to exit\n"; exit 0 }
+    
+      }
+
+sleep 10
+
+expect { 
+
+    timeout { send_user "Pattern not found - eth7 Configured sucessfully\n"; exit 0 }
+
+    -re "eth7 Configured sucessfully"
+
+     }
+
+sleep 10 
+
+expect {
+
+        timeout { send_user "Pattern not found - SONSraidInstall called with 4 arguments\n"; exit 0 }
+    
+        -re "SONSraidInstall called with 4 arguments"
+
+       }
+
+
+sleep 10
+
+expect {
+
+    timeout { send_user "Pattern not found - Starting IBM RAID V3700 initialization\n"; exit 0 }
+
+    -re "Starting IBM RAID V3700 initialization"
+
+      }
+
+
+sleep 10
+
+expect {
+
+    timeout { send_user "Pattern not found - Creating Cluster\n"; exit 0 }
+
+    -re "Creating Cluster"
+
+      }
+
+sleep 10
+
+expect {
+
+        timeout { send_user "Pattern not found - Trying to reach Cluster\n"; exit 0 }
+
+        -re "Trying to reach Cluster"
+
+      }
+      
+sleep 10
+
+expect {
+
+        timeout { send_user "Pattern not found - Cluster with Management IP\n"; exit 0 }
+    
+        -re "Cluster with Management IP : 192.168.70.120 is reachable.*"
+
+      }
+
+sleep 10
+
+expect {
+
+    timeout { send_user "Pattern not found - Waiting for disks to initialize\n"; exit 0 }
+
+    -re "Waiting for disks to initialize"
+
+     }
+
+expect {
+
+        timeout { send_user "Pattern not found - Rebooting system\n"; exit 0 }
+
+        -re "Rebooting"
+
+      }
+
+sleep 10
+
+set timeout 1800
+
+expect {
+
+        timeout { send_user "configureHA input prompt not found for second time \n"; exit 0 }
+
+        -re "Please enter to continue,number to change prompt value,0 to exit"  { sleep 10; send -s "\r\n" }
+
+       }
+
+set accounts [list ssuser oracle root admin ]
+
+array set passwords {ssuser ssuser oracle oracle root sonus admin admin}
+
+foreach accnt $accounts {
+
+    expect {
+
+        timeout { send_user "Did not get pattern - Enter new password for $accnt\n" ; exit 0 }
+
+      -timeout 1200  "Enter new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r"; send_user "NEW PASSWORD ENTERED FOR $accnt is $passwords($accnt)\n" }
+
+      }
+
+    sleep 10
+
+    expect {
+
+       timeout { send_user "Did not get pattern - Re-type new password for $accnt\n" ; exit 0 }
+
+      "Re-type new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r" ;  send_user "NEW PASSWORD RE-ENTERED FOR $accnt is $passwords($accnt)\n"  }
+
+        }
+
+    sleep 10
+
+    expect {
+
+        timeout { send_user "Did not get pattern - Please confirm the above input\n" ; exit 0 }
+
+         -re "Please confirm the above input.*" { sleep 10; send   -s "y\r" ;  send_user "CONFIRMED INPUT FOR FOR $accnt\n" }
+
+        }
+
+    sleep 10
+
+    expect  {
+
+        timeout { send_user "Did not get pattern - Password for $accnt changed successfully\n" ; exit 0 }
+
+         -re "Password for $accnt changed successfully" { sleep 5; send_user "PASSWORD SUCCESSFULLY CHANGED FOR $accnt\n" }
+
+        }
+
+    sleep 10
+
+
+}
+
+set timeout 300
+
+expect {
+
+        -re "Enable ACL Profile rule.*default:N" { sleep 5 ; send   -s "N\r" }
+
+
+        timeout { send_user "Did not get pattern - Enable ACL Profile rule. Ignore error if LDM slave upgrade is being done.\n" }
+
+     }
+
+
+set timeout 3600
+
+
+#expect {
+
+#            -re "Do you want to change the Generic key" { sleep 5 ; send  -s "N\r" }
+
+#            timeout { send_user "Did not get pattern - Do you want to change the Generic key\n" }
+
+#      }
+
+
+expect {
+
+      -re "Master.*or.*Slave.*database.*M" {sleep 5}
+
+        timeout { send_user "pattern failed\n"; exit 0}
+
+      }
+
+sleep 10
+
+expect {
+
+          -re "Please confirm values.*" { sleep 5; send   -s "Y\r"; }
+
+        timeout { send_user "Did not find input - Please confirm values\n"; exit 0}
+
+      }
+
+sleep 10
+
+expect {
+
+            -re "Do you want to change the Generic key" { sleep 5 ; send  -s "N\r" }
+
+            timeout { send_user "Did not get pattern - Do you want to change the Generic key\n" }
+
+      }
+
+
+
+
+expect {
+
+      timeout { send_user "Login screen not found\n" }
+
+      -re "login:"
+
+      }
+
+set timeout 10
+
+send -s "root\r"
+
+sleep 5
+
+expect -re ".*Password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "tail -f /export/home/ssuser/SOFTSWITCH/BIN/configureHA.pl.logactive\r"
+
+set timeout 1200
+
+expect {
+
+     timeout { send_user "Pattern not found - Rebooting system\n"; sleep 10;send -s "\x03";exit 0 }
+    
+    -re "HA configuration for active completed" {sleep 10;send -s "\x03"}
+
+      }
+
+
+exit 1

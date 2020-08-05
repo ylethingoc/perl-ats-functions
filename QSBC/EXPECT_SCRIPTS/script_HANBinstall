@@ -1,0 +1,91 @@
+#!/usr/bin/expect
+exp_internal 0
+
+set send_slow {1 0.02};
+#to avoid delay. This is the average speed for input to be provided to the box
+
+set path [lindex $argv 0];
+set hostip [lindex $argv 1];
+set patchpath [lindex $argv 2];
+set patchbuild [lindex $argv 3];
+set redtype [lindex $argv 4]
+set peerip [lindex $argv 5]
+
+if {[llength $argv] == 0} {
+  send_user "\nIncorrect option selected... Aborting Script\n"
+  exit 1
+}
+# Path like /tmp/autoinstallHA_$hostip\_dump.log
+log_file -noappend $path;
+send_user "$hostip $patchpath $patchbuild $redtype $peerip"
+
+spawn ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=5  -o StrictHostKeyChecking=no root@$hostip
+
+expect "password"
+send "shipped!!\r"
+expect ":~ #"
+send "date\r"
+expect ":~ #"
+send "pwd\r"
+expect ":~ #"
+send "source ~/.bashrc\r"
+sleep 1
+expect ":~ #"
+send "cd $patchpath\r"
+expect "$patchpath"
+send "./setup\r"
+expect "Select choice by number or type q to quit:"
+send "1 \r"
+sleep 5
+send " "
+expect "Do you agree to the above license terms"
+send "y\r"
+if {$patchbuild <= 9.0} {
+  expect "Are you sure you want to continue "
+  send "y\r"
+}
+expect "Enter a new password for the iServer database user and press"
+send "shipped!!\r"
+expect "Retype the password you entered for the iServer database user and press"
+send "shipped!!\r"
+sleep 35
+expect "Select your choice:"
+send "b\r"
+expect "Do you want to configure a bonded control interface for redundancy"
+sleep 1
+send "n\r"
+expect "Select your choice"
+sleep 1
+send "2\r"
+expect "Enter peer control IP address"
+send "$peerip\r"
+expect "Enter the redundancy type for this machine"
+send "$redtype\r"
+expect "Select your choice:"
+sleep 1
+send "q\r"
+expect "Enter the management IP address []:"
+send "$hostip\r"
+expect "Enter the management IPv6 address []:"
+send "\r"
+sleep 5
+expect "Do you want to commit the changes"
+send "y\r"
+expect {
+
+    -re "Enter file in which to save the key" { expect "Enter file in which to save the key"; send "\r"; expect "Overwrite (y/n)?"; send "y\r"; expect "Enter passphrase (empty for no passphrase)"; send "\r"; expect "Enter same passphrase again:"; send "\r"; expect "Are you sure you want to continue connecting"; send "yes\r"; expect " password:"; send "shipped!!\r" }
+
+    timeout { send "\r" }
+}
+sleep 35
+send "\r"
+sleep 30
+send "\r"
+sleep 20
+expect "Select choice by number or type q to quit:"
+send "q\r"
+expect ":/var/builds/patch_"
+send "date\r"
+expect ":/var/builds/patch_"
+sleep 10
+close

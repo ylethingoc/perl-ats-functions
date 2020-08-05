@@ -1,0 +1,321 @@
+#!/usr/bin/expect
+
+#exp_internal -f  upgrade.log 0
+
+set systemTime [clock seconds]
+set time [clock format $systemTime -format %a_%b_%d_%Y_%H_%M_%S]
+append newfile "~/ats_user/logs/upgradePsxSlaveTo11_0_${time}.log"
+
+log_file -noappend "$newfile";
+
+set send_slow {1 0.02}
+
+set ldm [lindex $argv 0]
+set slaveiloip [lindex $argv 1]
+set slaveip [lindex $argv 2]
+set build_path [lindex $argv 3]
+set iso [lindex $argv 4]
+
+set timeout 50
+
+spawn bash -c "ssh-keygen -R $slaveip"
+
+sleep 10
+
+#spawn ssh -o ServerAliveInterval=60  -o StrictHostKeyChecking=no root@10.54.48.74;
+spawn ssh -o ServerAliveInterval=60  -o StrictHostKeyChecking=no Administrator@$slaveiloip;
+set sshID $spawn_id
+
+
+expect -re ".*password:"
+send -s "Sonus!@#\r"
+
+sleep 5
+
+expect "</>hpiLO->"
+
+sleep 5
+
+
+send -s "textcons\r"
+
+sleep 5
+
+expect {
+
+    timeout { send_user "textcons not launched\n"; exit 0 }
+
+    -re ".*Press.*Esc.*to return to the CLI Session"
+
+    }
+
+set timeout 15
+
+sleep 5
+
+expect {
+
+    -re ".*]#" { send -s "exit\r" ;sleep 5;  exp_continue }
+
+    -r ".*login:" { send -s "root\r" ; sleep 5 }
+
+      }
+
+expect  -re ".*Password:" { send -s "sonus\r" }
+
+sleep 5
+
+expect -re ".*]#"
+
+sleep 5
+
+set timeout 40
+
+send -s "sed -i \'/requiretty/s/^/#/\' /etc/sudoers\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+log_user 0
+
+send -s "rpm -qa SONSss\r"
+
+sleep 5
+
+expect -re "SONSss-.*.x86_64"
+
+set version $expect_out(0,string)
+
+puts "Base version is $version"
+
+if {[string match "*V09.01*" $version] || [string match "*V09.00*" $version] || [string match "*V08.04*" $version] } {
+
+    send -s "/etc/init.d/init.sonusAgent stop\r"
+
+    sleep 5
+
+    expect -re ".*]#"
+
+    send -s "chmod -x /opt/sonus/sonusComm/sbin/init.sonusAgent\r"
+
+    sleep 5
+
+    expect -re ".*]#"
+
+    send -s "/etc/init.d/ssoftswitch stop\r"
+
+    sleep 5
+
+    expect -re ".*]#"
+
+    send -s "chkconfig ssoftswitch off\r"
+
+    sleep 5
+
+    expect -re ".*]#"
+
+ }
+
+log_user 1
+
+sleep 5
+
+send -s "mkdir -p /mnt/install\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+
+send -s "cd /home/admin\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "rm -rf *\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+set timeout 1200
+
+send -s "scp  -o StrictHostKeyChecking=no ajames@10.54.81.66:$build_path /home/admin\r"
+
+sleep 5
+
+expect  -re ".*password:"
+send  -s "mov123\r"
+
+sleep 900
+
+expect {
+    -re ".*]#" {send_user "Copying iso complete\n"  }
+
+    timeout { send_user "Copying iso is taking more time than expected 20 mins. Please use different bats server to copy ISO to PSX\n"; exit 0}
+        
+     }
+
+sleep 30
+
+set timeout 20
+
+send  -s "\r"
+
+sleep 5
+
+expect -re ".*#"
+send  -s "cd /home/admin\r"
+
+sleep 5
+
+expect -re ".*#"
+
+send_user "Iso is $iso\n"
+
+sleep  5
+
+send -s "mount -o loop $iso /mnt/install\r"
+
+sleep 5
+
+expect -re "mount"
+send  -s "cd /mnt/install/Sonus/scripts\r"
+
+sleep 5
+
+expect -re ".*#"
+send  -s "./upgradePlatform\r"
+
+sleep 5
+
+set timeout 2400
+
+expect {
+
+        timeout { send_user "Pattern not found - Platform upgrade completed\n";exit 0 }
+      
+        -re ".*Platform upgrade completed" 
+
+        
+       }
+
+
+sleep 10
+
+set timeout 120
+
+expect {
+
+       timeout { send_user "No need to reboot\n"; } 
+
+        -re "Execute reboot command to reboot the system.*" { sleep 5; send  -s "reboot -- -r\r\n" }
+
+       } 
+
+sleep 10
+
+
+
+set accounts [list ssuser oracle root admin ]
+
+array set passwords {ssuser ssuser oracle oracle root sonus admin admin}
+
+foreach accnt $accounts {
+
+    expect {
+
+        timeout { send_user "Did not get pattern - Enter new password for $accnt\n" ; exit 0 }
+
+      -timeout 1200  "Enter new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r"; send_user "NEW PASSWORD ENTERED FOR $accnt is $passwords($accnt)\n" } 
+	  
+	  }
+	  
+    sleep 10	  
+	  
+    expect {	  
+		
+	   timeout { send_user "Did not get pattern - Re-type new password for $accnt\n" ; exit 0 }			
+
+      "Re-type new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r" ;  send_user "NEW PASSWORD RE-ENTERED FOR $accnt is $passwords($accnt)\n"  }
+
+        }
+	
+    sleep 10	
+	
+    expect {
+
+		timeout { send_user "Did not get pattern - Please confirm the above input\n" ; exit 0 }			
+		
+		 -re "Please confirm the above input.*" { sleep 10; send   -s "y\r" ;  send_user "CONFIRMED INPUT FOR FOR $accnt\n" }
+		 
+		}
+		
+    sleep 10		
+		
+    expect  {
+
+		timeout { send_user "Did not get pattern - Password for $accnt changed successfully\n" ; exit 0 }
+		
+		 -re "Password for $accnt changed successfully" { sleep 5; send_user "PASSWORD SUCCESSFULLY CHANGED FOR $accnt\n" }
+	
+		}
+
+    sleep 10
+
+
+}
+
+## If slave upgrade is LDM , Enable ACL Profile prompt is not valid
+if {$ldm ne "LDM"} {
+
+    send_user "Not LDM upgrade. ACL rule prompt is expected\n"
+
+    set timeout 300
+
+    expect {
+
+            -re "Enable ACL Profile rule.*default:N" { sleep 5 ; send   -s "N\r" }
+		
+            timeout { send_user "Did not get pattern - Enable ACL Profile rule. Ignore error is LDM slave upgrade is being done.\n" }
+
+          }
+
+    }
+
+
+set timeout 3600
+
+expect {
+
+     -re "Master.*or.*Slave.*database.*S" {sleep 5}
+
+	 timeout { send_user "Did not find pattern - Master or Slave database ..S \n"; exit 0}
+
+      }
+
+sleep 10
+
+expect {
+
+          -re "Please confirm values.*" { sleep 5; send   -s "Y\r"; }
+    
+        timeout { send_user "Did not find input - Please confirm values\n"; exit 0}
+
+      }
+
+sleep 10
+
+
+expect {
+
+      -re ".*login:" { send_user "Login screen found. Upgrade complete\n" }
+
+    timeout { send_user "Login screen not found." ; sleep 5 ; exit 0 }
+
+    
+      }
+
+exit 1

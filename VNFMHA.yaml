@@ -1,0 +1,2244 @@
+# ======= The structure of HOT - Heat Orchestration Template =======
+ # Heat Version
+ # Descrption
+ # Parameters
+ # Resources
+ # Output
+# ===================================================================
+
+# ================== How to Run/Use this file ===============
+#
+#  source openrc.sh  <== this file can be downloaded from the dashboard
+#
+#  NET_ID=$(nova net-list | awk '/ ext-net / { print $2 }')  <== where 'ext-net' is name of your external network
+#  SEC_ID=$(nova secgroup-list | awk '/ default / { print $2 }')  <== where 'default' is name of the security group
+#
+#  openstack stack create --parameter "availability_zone=nova" \
+#					--parameter "lb_image_id=$LB_IMAGE_NAME" \
+#					--parameter "db_image_id=$DB_IMAGE_NAME"  \
+#					--parameter "app_image_id=$APP_IMAGE_NAME" \
+#					--parameter "public_net_v4=$EXTERNAL_NETWORK_NAME_1" \
+#					--parameter "public_net_v6=$EXTERNAL_NETWORK_NAME_1" \
+#					--parameter "public_net_v4_subnet_id=444" \
+#                   --parameter "public_net_v4_subnet_id=444" \
+#					--parameter "db1_vol_id=$DB1_CINDER_ID" \
+#					--parameter "db2_vol_id=$DB2_CINDER_ID" \
+#					--parameter "db3_vol_id=$DB3_CINDER_ID" \
+#					--parameter "app1_vol_id=$APP1_CINDER_ID" \
+#					--parameter "app2_vol_id=$APP2_CINDER_ID" \
+#					 -t Ribbon_VNFM_HEAT_Restore Vnf_Manager#
+# RIbbon VNFM Heat Template Revision 2019-04-24
+# ===========================================================
+
+# Ensure compatibility with Kilo or newer.
+# Don't increment this until Kilo support is deprecated for VNFM.
+heat_template_version: newton
+
+description: Ribbon VNFM V19.0 Heat template to create a VNFM manager HA cinder-boot instance.
+
+
+parameter_groups:
+- label: "VNFM Deployment type"
+  description: "VNFM Deployment type"
+  parameters:
+  - ipv4_provider_network
+  - ipv4_floating_network
+  - ipv6_provider_network
+  - boot_from_volume
+
+- label: "VNFM Images"
+  description: "VNFM Glance Image UUIDs"
+  parameters:
+  - availability_zone
+  - vm_name_prefix
+  - app_image_id
+  - lb_image_id
+  - db_image_id
+
+- label: "VNFM Flavor"
+  description: "VNFM Flavor Image UUIDs"
+  parameters:
+  - app_flavor_id
+  - lb_flavor_id
+  - db_flavor_id
+
+- label: "VNFM Networks"
+  description: "VNFM External IPv6 Networks"
+  parameters:
+  - public_net_v4
+  - public_net_v4_subnet_id
+  - public_net_v6
+  - public_net_v6_subnet_id
+
+- label: "VNFM System"
+  description: "VNFM System access and controls"
+  parameters:
+  - ntp_servers
+  - vnfm_public_key
+
+parameters:
+  ipv4_provider_network:
+    type: boolean
+    default: true
+
+  ipv4_floating_network:
+    type: boolean
+    default: false
+
+  ipv6_provider_network:
+    type: boolean
+    default: true
+
+  boot_from_volume:
+    type: boolean
+    default: true
+
+  # prompt user for VM name prefix
+  vm_name_prefix:
+    type: string
+    label: Common prefix VM base name
+    #default: "VZTVVNFMVS1"
+    default: "vnfm"
+
+  # prompt user for image IDs for the QCOW2 images
+  lb_image_id:
+    type: string
+    label: Image ID of the load balancer
+    description: Image ID of the load balancer
+    default: ""
+  db_image_id:
+    type: string
+    label: Image ID of the Database
+    description: Image ID of the Database
+    default: ""
+  app_image_id:
+    type: string
+    label: Image ID of the vnfm application
+    description: Image ID of the vnfm application
+    default: ""
+
+  # prompt user for image IDs for the QCOW2 images
+  lb_flavor_id:
+    type: string
+    label: Image ID of the load balancer
+    description: Image ID of the load balancer
+    default: ""
+  db_flavor_id:
+    type: string
+    label: Image ID of the Database
+    description: Image ID of the Database
+    default: ""
+  app_flavor_id:
+    type: string
+    label: Image ID of the vnfm application
+    description: Image ID of the vnfm application
+    default: ""
+
+  public_net_v4:
+    type: string
+    label: External IPv4 network Id
+    description: External IPv4 network Id
+    #change this to match one of your external network names
+    default : ""
+    constraints:
+      - custom_constraint: neutron.network
+
+  public_net_v4_subnet_id:
+    type: string
+    label: External Ipv4 Network Subnet Id
+    description: External Ipv6 Network Subnet Id
+    default: ""
+
+  public_net_v6:
+    type: string
+    label: External Ipv6 network Id
+    description: External Ipv6 network Id
+    #change this to match one of your external network names
+    default : ""
+    constraints:
+      - custom_constraint: neutron.network
+
+  public_net_v6_subnet_id:
+    type: string
+    label: External Ipv6 Network Subnet Id
+    description: External Ipv6 Network Subnet Id
+    default: ""
+
+  # prompt user for public key of the user
+  vnfm_public_key:
+    type: string
+    description: Enter the user's public key for VNFM VMs
+    default: "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA4oGIi+0mRS9Q25ln5/gKe1mmR7cfVuFxRQONVbjq8y+JB0g2T49b1Bf8xRhyhkKgdbIbEWdcmboSpTegt6zM0rz6Yw/73c3NVy60CX47t55GCCFYXxt3uwgRlN/9KX1mETCYOSD5AZ7e9YXvbd6/hUKkK/o8Zrhch9ckR2nVSe0v1wob4MMhmC1e9LV5tvk6zAIdmTWOYcrg0Yd6yHRQbNjlVFpQ147TPGy12+tDytqEW+09DQZqvhuiwSyxk3lBlNJYfCT2VidsS2+MQYD+t2REc65vcq/EvXuyuwpvv/IIjX2BBMCG7fMXkGh0wnIPoHbUCNfq1Zr2JGqZ6D8GIQ=="
+
+  # prompt user for target host aggregate
+  availability_zone:
+    type: string
+    label: Target availability zone for deployment
+    description: Target availability zone for deployment
+    default: "nova"
+
+  ntp_servers:
+    type: comma_delimited_list
+    label: NTP server IP addresses
+    description: Comma delimited list of NTP Server IP Addresses.
+    default: "10.128.254.67"
+resources:
+
+  # This key pair will be bound to the stack lifecycle.
+  user_public_key:
+    # http://docs.openstack.org/developer/heat/template_guide/openstack.html#OS::Nova::KeyPair
+    type: OS::Nova::KeyPair
+    properties:
+      #name: vnfm_ssh_keypair
+      name: {list_join: ['-', [ "vnfm_ssh_keypair" , {get_param: "OS::stack_name"} ]]}
+      public_key: { get_param: vnfm_public_key }
+      save_private_key: True
+
+  # This key pair is used for all the internal purposes
+  internal_keypair:
+    # http://docs.openstack.org/developer/heat/template_guide/openstack.html#OS::Nova::KeyPair
+    type: OS::Nova::KeyPair
+    properties:
+      #name: internal_keypair
+      name: {list_join: ['-', [ "internal_keypair" , {get_param: "OS::stack_name"} ]]}
+      save_private_key: True
+
+  network_eth_v4:
+      type: OS::Neutron::Net
+      external_id: { get_param: public_net_v4 }
+  network_eth_v6:
+      type: OS::Neutron::Net
+      external_id: { get_param: public_net_v6 }
+
+  subnet_v4:
+    type: OS::Neutron::Subnet
+    external_id: { get_param: public_net_v4_subnet_id }
+    # The following properties are not suppose to be needed when an external_id is provided
+    # however causes an Heat launch error if absent.
+    properties:
+        network: { get_param: public_net_v4 }
+        cidr: "0.0.0.0/1"
+  subnet_v6:
+    type: OS::Neutron::Subnet
+    external_id: { get_param: public_net_v6_subnet_id }
+    # The following properties are not suppose to be needed when an external_id is provided
+    # however causes an Heat launch error if absent.
+    properties:
+        network: { get_param: public_net_v6 }
+        cidr: "0.0.0.0/1"
+
+  #floating IP network support
+  # internal private network
+  private_mgmt_net:
+    type: OS::Neutron::Net
+    condition: condition_floating_ip_support
+    #description: Internal managment network
+    properties:
+      name: private_mgmt_net
+  private_mgmt_subnet:
+    type: OS::Neutron::Subnet
+    condition: condition_floating_ip_support
+    #description: Internal management subnet
+    properties:
+      network_id: { get_resource: private_mgmt_net }
+      cidr: 192.168.10.0/24
+      gateway_ip: 192.168.10.1
+  # Router for Management Network
+  mgmt_router:
+    type: OS::Neutron::Router
+    condition: condition_floating_ip_support
+    #description: Router to connect the private_mgmt_net and the ext_mgmt_net
+    properties:
+      external_gateway_info:
+        network: { get_param: public_net_v4 }
+  mgmt_router_interface:
+    condition: condition_floating_ip_support
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: mgmt_router}
+      subnet_id: { get_resource: private_mgmt_subnet }
+
+
+
+  db_security_groupv4:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: VNFM Database IpV4 Security Policy
+      name:
+        list_join:
+        - ''
+        - - VNFM-DB-SEC_GRP-V4-
+          - {get_param: 'OS::stack_name'}
+      rules:
+      - {direction: ingress, ethertype: IPv4, protocol: 112,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: 112,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: ICMP, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: ICMP, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: UDP, port_range_min: 123,   port_range_max: 123,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: UDP, port_range_min: 53,    port_range_max: 53,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 27017, port_range_max: 27017, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 27017, port_range_max: 27017, remote_ip_prefix: 0.0.0.0/0}
+    condition: condition_ipv4_provider_or_floating
+
+  db_security_groupv6:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: VNFM Database IpV6 Security Policy
+      name:
+        list_join:
+        - ''
+        - - VNFM-DB-SEC_GRP-V6-
+          - {get_param: 'OS::stack_name'}
+      rules:
+      - {direction: ingress, ethertype: IPv6, protocol: 112,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: 112,  remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: ICMP, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: ICMP, remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: UDP, port_range_min: 123,   port_range_max: 123,   remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: UDP, port_range_min: 53,    port_range_max: 53,    remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 27017, port_range_max: 27017, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 27017, port_range_max: 27017, remote_ip_prefix: '::/0'}
+      
+    condition: condition_enable_ipv6_network
+
+  app_security_groupv4:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: VNFM Application IpV4 Security Policy
+      name:
+        list_join:
+        - ''
+        - - VNFM-APP-SEC_GRP-V4-
+          - {get_param: 'OS::stack_name'}
+      rules:
+      - {direction: ingress, ethertype: IPv4, protocol: 112,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: 112,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: ICMP, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: ICMP, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 389,   port_range_max: 389,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: UDP, port_range_min: 389,   port_range_max: 389,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: UDP, port_range_min: 123,   port_range_max: 123,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: UDP, port_range_min: 53,    port_range_max: 53,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 636,   port_range_max: 636,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 8000,  port_range_max: 8000,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 8009,  port_range_max: 8009,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 27017, port_range_max: 27017, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 4000,  port_range_max: 4100,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 4000,  port_range_max: 4100,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 45564, port_range_max: 45564, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 45564, port_range_max: 45564, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 443,   port_range_max: 443,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 443,   port_range_max: 443,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 8080,  port_range_max: 8080,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 8080,  port_range_max: 8080,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 8443,  port_range_max: 8443,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 8443,  port_range_max: 8443,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 5000,  port_range_max: 5000,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 8774,  port_range_max: 8774,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 8776,  port_range_max: 8776,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 9292,  port_range_max: 9292,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 9696,  port_range_max: 9696,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 12121, port_range_max: 12121, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 13000, port_range_max: 13000, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 13292, port_range_max: 13292, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 13774, port_range_max: 13774, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 13776, port_range_max: 13776, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 13696, port_range_max: 13696, remote_ip_prefix: 0.0.0.0/0}
+    condition: condition_ipv4_provider_or_floating
+
+  app_security_groupv6:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: VNFM Application IpV6 Security Policy
+      name:
+        list_join:
+        - ''
+        - - VNFM-APP-SEC_GRP-V6-
+          - {get_param: 'OS::stack_name'}
+      rules:
+      - {direction: ingress, ethertype: IPv6, protocol: 112,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: 112,  remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: ICMP, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: ICMP, remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 389,   port_range_max: 389,   remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: UDP, port_range_min: 389,   port_range_max: 389,   remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: UDP, port_range_min: 123,   port_range_max: 123,   remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: UDP, port_range_min: 53,    port_range_max: 53,    remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 636,   port_range_max: 636,   remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 8009,  port_range_max: 8009,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 27017, port_range_max: 27017, remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 4000,  port_range_max: 4100,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 4000,  port_range_max: 4100,  remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 45564, port_range_max: 45564, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 45564, port_range_max: 45564, remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 443,   port_range_max: 443,   remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 443,   port_range_max: 443,   remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 8080,  port_range_max: 8080,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 8080,  port_range_max: 8080,  remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 8443,  port_range_max: 8443,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 8443,  port_range_max: 8443,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 5000,  port_range_max: 5000,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 8774,  port_range_max: 8774,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 8776,  port_range_max: 8776,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 9292,  port_range_max: 9292,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 9696,  port_range_max: 9696,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 12121, port_range_max: 12121, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 13000, port_range_max: 13000, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 13292, port_range_max: 13292, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 13774, port_range_max: 13774, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 13776, port_range_max: 13776, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 13696, port_range_max: 13696, remote_ip_prefix: '::/0'}
+    condition: condition_enable_ipv6_network
+
+  lb_security_groupv4:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: VNFM Load Balancer IpV4 Security Policy
+      name:
+        list_join:
+        - ''
+        - - VNFM-LB-SEC_GRP-V4-
+          - {get_param: 'OS::stack_name'}
+      rules:
+      - {direction: ingress, ethertype: IPv4, protocol: 112, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: 112, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: ICMP, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: ICMP, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 389,   port_range_max: 389,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: UDP, port_range_min: 389,   port_range_max: 389,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: UDP, port_range_min: 123,   port_range_max: 123,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: UDP, port_range_min: 53,    port_range_max: 53,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 636,   port_range_max: 636,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 8009,  port_range_max: 8009,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 27017, port_range_max: 27017, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 27017, port_range_max: 27017, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 443,   port_range_max: 443,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 443,   port_range_max: 443,   remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 8443,  port_range_max: 8443,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 8443,  port_range_max: 8443,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 80,    port_range_max: 80,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 80,    port_range_max: 80,    remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 8080,  port_range_max: 8080,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 8080,  port_range_max: 8080,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 5000,  port_range_max: 5000,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 8774,  port_range_max: 8774,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 8776,  port_range_max: 8776,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 9292,  port_range_max: 9292,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 9696,  port_range_max: 9696,  remote_ip_prefix: 0.0.0.0/0}
+      - {direction: ingress, ethertype: IPv4, protocol: TCP, port_range_min: 12121, port_range_max: 12121, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 12121, port_range_max: 12121, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 13000, port_range_max: 13000, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 13292, port_range_max: 13292, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 13774, port_range_max: 13774, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 13776, port_range_max: 13776, remote_ip_prefix: 0.0.0.0/0}
+      - {direction: egress,  ethertype: IPv4, protocol: TCP, port_range_min: 13696, port_range_max: 13696, remote_ip_prefix: 0.0.0.0/0}
+    condition: condition_ipv4_provider_or_floating
+
+  lb_security_groupv6:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: VNFM Load Balancer IpV6 Security Policy
+      name:
+        list_join:
+        - ''
+        - - VNFM-LB-SEC_GRP-V6-
+          - {get_param: 'OS::stack_name'}
+      rules:
+      - {direction: ingress, ethertype: IPv6, protocol: 112,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: 112,  remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: ICMP, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: ICMP, remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 22,    port_range_max: 22,    remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 389,   port_range_max: 389,   remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: UDP, port_range_min: 389,   port_range_max: 389,   remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: UDP, port_range_min: 123,   port_range_max: 123,   remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: UDP, port_range_min: 53,    port_range_max: 53,    remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 636,   port_range_max: 636,   remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 8009,  port_range_max: 8009,  remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 27017, port_range_max: 27017, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 27017, port_range_max: 27017, remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 443,   port_range_max: 443,   remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 443,   port_range_max: 443,   remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 8443,  port_range_max: 8443,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 8443,  port_range_max: 8443,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 5000,  port_range_max: 5000,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 8774,  port_range_max: 8774,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 8776,  port_range_max: 8776,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 9292,  port_range_max: 9292,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 9696,  port_range_max: 9696,  remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 12121, port_range_max: 12121, remote_ip_prefix: '::/0'}
+      - {direction: ingress, ethertype: IPv6, protocol: TCP, port_range_min: 12121, port_range_max: 12121, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 13000, port_range_max: 13000, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 13292, port_range_max: 13292, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 13774, port_range_max: 13774, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 13776, port_range_max: 13776, remote_ip_prefix: '::/0'}
+      - {direction: egress,  ethertype: IPv6, protocol: TCP, port_range_min: 13696, port_range_max: 13696, remote_ip_prefix: '::/0'}
+    condition: condition_enable_ipv6_network
+
+  db_cluster:
+    type: OS::Nova::ServerGroup
+    properties:
+      name: db_group
+      policies: ['affinity']
+  lb_cluster:
+    type: OS::Nova::ServerGroup
+    properties:
+      name: lb_group
+      policies: ['affinity']
+  app_cluster:
+    type: OS::Nova::ServerGroup
+    properties:
+      name: app_group
+      policies: ['affinity']
+
+  # ##########################################################################
+  # ##  DATABASE VM 1
+  # ##########################################################################
+
+  # OPTIONAL Create IPV4 port
+  db1_mgmt_port_v4:
+    type: OS::Neutron::Port
+    properties:
+      network_id: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4}, {get_resource: private_mgmt_net}]}
+      security_groups:
+           - {get_resource: db_security_groupv4 }
+      fixed_ips:
+          - subnet: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4_subnet_id}, { get_resource: private_mgmt_subnet }] }
+    condition: condition_ipv4_provider_or_floating
+
+  # OPTIONAL Create IPV6 port
+  db1_mgmt_port_v6:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: public_net_v6 }
+      security_groups:
+          - {get_resource: db_security_groupv6 }
+      fixed_ips:
+          - subnet: { get_param: public_net_v6_subnet_id }
+    condition: condition_enable_ipv6_network
+
+
+  # Create Cinder volumes for DB VMs
+  db1_vol:
+    type: OS::Cinder::Volume
+    # external_id: { get_param: db1_vol_id }
+    deletion_policy: Retain
+    #deletion_policy: Delete
+    properties:
+      availability_zone: nova
+      #name: "db1-volume"
+      name: {list_join: ['-', [ "db1-volume" , {get_param: "OS::stack_name"} ]]}
+      size: 200
+      #size: 10
+
+  db1_vol_att:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      volume_id: { get_resource: db1_vol }
+      instance_uuid: { get_resource: db1 }
+      mountpoint: /dev/vdc
+
+  db1_boot_vol:
+    type: OS::Cinder::Volume
+    deletion_policy: Delete
+    properties:
+      description:
+      image: { get_param: db_image_id }
+      name: {list_join: ['-', [ "db1_boot_vol" , {get_param: "OS::stack_name"} ]]}
+      size: 10
+
+  # Create a HA cluster for 3 db database VMs
+  db1:
+    type: OS::Nova::Server
+    depends_on: [ db1_vol, db1_boot_vol, db2, db3 ]
+    properties:
+       key_name: { get_resource: user_public_key }
+       name: {list_join: ['-', [ {get_param: vm_name_prefix}, "db1" ]]}
+       block_device_mapping_v2: [{ device_name: "vda", volume_id : { get_resource : db1_boot_vol }, delete_on_termination : "true" }]
+       availability_zone: { get_param: availability_zone }
+       scheduler_hints:
+         group: { get_resource: db_cluster }
+       flavor: { get_param: db_flavor_id }
+       networks:
+         if:
+            - and: # both v4 and v6
+              - condition_ipv4_provider_or_floating
+              - condition_enable_ipv6_network
+            - [port: {get_resource: db1_mgmt_port_v4}, port: { get_resource: db1_mgmt_port_v6 }]
+            - if: # else v4 or v6
+                - condition_ipv4_provider_or_floating
+                - [port: {get_resource: db1_mgmt_port_v4}]
+                - [port: {get_resource: db1_mgmt_port_v6}]
+
+       config_drive: True
+       user_data_format: RAW
+       user_data:
+         str_replace:
+           template: |
+              #cloud-config
+              write_files:
+               -   content: |
+                      {
+                        "ssh-keypair" : "$PRIVATE_KEYPAIR",
+                        "internal-public-key" : "$PUBLIC_KEYPAIR",
+                        "user-public-key" : "$USER_PUBLIC_KEYPAIR",
+                        "ntp_servers" : "$NTP_SERVERS",
+                        "hostname" : "$HOSTNAME",
+                        $THIS_VM_PORT_INFO
+                        "vnfm-db1-ip" : "$DB1_IP",
+                        "vnfm-db2-ip" : "$DB2_IP",
+                        "vnfm-db3-ip" : "$DB3_IP",
+                        "lb1-ip" : "$LB1_IP",
+                        "lb2-ip" : "$LB2_IP",
+                        "app1-ip" : "$APP1_IP",
+                        "app2-ip" : "$APP2_IP",
+                        "lb-vip": "$LB_VIP",
+                        "vm-type": "db",
+                        "vm-id": "db1",
+                        "stackId": "$STACK_ID"
+                      }
+           params:
+               $PRIVATE_KEYPAIR: { get_attr: [internal_keypair, private_key] }
+               $PUBLIC_KEYPAIR: { get_attr: [internal_keypair, public_key]}
+               $USER_PUBLIC_KEYPAIR: { get_param: vnfm_public_key }
+               $NTP_SERVERS: { get_param: ntp_servers }
+               $STACK_ID : {get_param: "OS::stack_id"}
+               $HOSTNAME : { list_join: ['-', [ {get_param: vm_name_prefix}, "db1" ]] }
+               $LB1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $APP1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $APP2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB_VIP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }
+               $DB1_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB2_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB3_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db3_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db3_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $THIS_VM_PORT_INFO:
+                 str_replace:
+                      template: |
+                        "eth$indexIpAddress" : "$ETH_IP",
+                        "eth$indexIsDHCP"    : "false",
+                        "eth$indexIpVersion" : "$ETH_VERSION",
+                        "eth$indexIpGateway" : "$ETH_GATEWAY",
+                        $THIS_VM_SECOND_PORT
+                      params:
+                        $index: 0
+                        $ETH_IP  :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [db1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [db1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                        $ETH_DHCP :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, enable_dhcp]}, {get_attr: [private_mgmt_subnet, enable_dhcp]} ]}
+                          - { get_attr: [subnet_v6, enable_dhcp] }
+                        $ETH_VERSION :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, ip_version]}, {get_attr: [private_mgmt_subnet, ip_version]} ]}
+                          - { get_attr: [subnet_v6, ip_version] }
+                        $ETH_GATEWAY :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, gateway_ip]}, {get_attr: [private_mgmt_subnet, gateway_ip]} ]}
+                          - { get_attr: [subnet_v6, gateway_ip] }
+                        $THIS_VM_SECOND_PORT:
+                          if:
+                          - and:
+                            - condition_ipv4_provider_or_floating
+                            - condition_enable_ipv6_network
+                          - str_replace:
+                              template: |
+                                "eth$indexIpAddress" : "$ETH_IP",
+                                "eth$indexIsDHCP"    : "false",
+                                "eth$indexIpVersion" : "$ETH_VERSION",
+                                "eth$indexIpGateway" : "$ETH_GATEWAY",
+                              params:
+                                $index: 1
+                                $ETH_IP  : { get_attr: [db1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                                $ETH_DHCP : { get_attr: [subnet_v6, enable_dhcp] }
+                                $ETH_VERSION : { get_attr: [subnet_v6, ip_version] }
+                                $ETH_GATEWAY : { get_attr: [subnet_v6, gateway_ip] }
+                          - "No Second Port"
+
+
+  # ##########################################################################
+  # ##  DATABASE VM 2
+  # ##########################################################################
+
+  # OPTIONAL Create IPV4 port
+  db2_mgmt_port_v4:
+    type: OS::Neutron::Port
+    properties:
+      network_id: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4}, {get_resource: private_mgmt_net}]}
+      security_groups:
+           - {get_resource: db_security_groupv4 }
+      fixed_ips:
+          - subnet: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4_subnet_id}, { get_resource: private_mgmt_subnet }] }
+    condition: condition_ipv4_provider_or_floating
+
+  # OPTIONAL Create IPV6 port
+  db2_mgmt_port_v6:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: public_net_v6 }
+      security_groups:
+           - {get_resource: db_security_groupv6 }
+      fixed_ips:
+          - subnet: { get_param: public_net_v6_subnet_id }
+    condition: condition_enable_ipv6_network
+
+
+  # Create Cinder volumes for DB VMs
+  db2_vol:
+    type: OS::Cinder::Volume
+    #external_id: { get_param: db2_vol_id }
+    deletion_policy: Retain
+    #deletion_policy: Delete
+    properties:
+      availability_zone: nova
+      #name: "db2-volume"
+      name: {list_join: ['-', [ "db2-volume" , {get_param: "OS::stack_name"} ]]}
+      size: 200
+      #size: 10
+
+  db2_vol_att:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      volume_id: { get_resource: db2_vol }
+      instance_uuid: { get_resource: db2 }
+      mountpoint: /dev/vdc
+
+  db2_boot_vol:
+    type: OS::Cinder::Volume
+    deletion_policy: Delete
+    properties:
+      description:
+      image: { get_param: db_image_id }
+      name: {list_join: ['-', [ "db2_boot_vol" , {get_param: "OS::stack_name"} ]]}
+      size: 10
+
+  # Create a HA cluster for 3 db database VMs
+  db2:
+    type: OS::Nova::Server
+    depends_on: [ db2_vol, db2_boot_vol ]
+    properties:
+       key_name: { get_resource: user_public_key }
+       name: {list_join: ['-', [ {get_param: vm_name_prefix}, "db2" ]]}
+       block_device_mapping_v2: [{ device_name: "vda", volume_id : { get_resource : db2_boot_vol }, delete_on_termination : "true" }]
+       availability_zone: { get_param: availability_zone }
+       scheduler_hints:
+         group: { get_resource: db_cluster }
+       flavor: { get_param: db_flavor_id }
+       networks:
+         if:
+            - and:
+              - condition_ipv4_provider_or_floating
+              - condition_enable_ipv6_network
+            - [port: {get_resource: db2_mgmt_port_v4}, port: { get_resource: db2_mgmt_port_v6 }]
+            - if:
+                - condition_ipv4_provider_or_floating
+                - [port: {get_resource: db2_mgmt_port_v4}]
+                - [port: {get_resource: db2_mgmt_port_v6}]
+
+       config_drive: True
+       user_data_format: RAW
+       user_data:
+         str_replace:
+           template: |
+              #cloud-config
+              write_files:
+               -   content: |
+                      {
+                        "ssh-keypair" : "$PRIVATE_KEYPAIR",
+                        "internal-public-key" : "$PUBLIC_KEYPAIR",
+                        "user-public-key" : "$USER_PUBLIC_KEYPAIR",
+                        "ntp_servers" : "$NTP_SERVERS",
+                        "hostname" : "$HOSTNAME",
+                        "vnfm-db1-ip" : "$DB1_IP",
+                        "vnfm-db2-ip" : "$DB2_IP",
+                        "vnfm-db3-ip" : "$DB3_IP",
+                        "lb1-ip" : "$LB1_IP",
+                        "lb2-ip" : "$LB2_IP",
+                        "app1-ip" : "$APP1_IP",
+                        "app2-ip" : "$APP2_IP",
+                        "lb-vip": "$LB_VIP",
+                        "vm-type": "db",
+                        "vm-id": "db2",
+                        "stackId": "$STACK_ID",
+                        $THIS_VM_PORT_INFO
+                      }
+           params:
+               $PRIVATE_KEYPAIR: { get_attr: [internal_keypair, private_key] }
+               $PUBLIC_KEYPAIR: { get_attr: [internal_keypair, public_key]}
+               $USER_PUBLIC_KEYPAIR: { get_param: vnfm_public_key }
+               $NTP_SERVERS: { get_param: ntp_servers }
+               $STACK_ID : {get_param: "OS::stack_id"}
+               $HOSTNAME : { list_join: ['-', [ {get_param: vm_name_prefix}, "db2" ]] }
+               $LB1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $APP1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $APP2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB_VIP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }                 
+               $DB1_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB2_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB3_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db3_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db3_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $THIS_VM_PORT_INFO:
+                 str_replace:
+                      template: |
+                        "eth$indexIpAddress" : "$ETH_IP",
+                        "eth$indexIsDHCP"    : "false",
+                        "eth$indexIpVersion" : "$ETH_VERSION",
+                        "eth$indexIpGateway" : "$ETH_GATEWAY",
+                        $THIS_VM_SECOND_PORT
+                      params:
+                        $index: 0
+                        $ETH_IP  :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [db2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [db2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                        $ETH_DHCP :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, enable_dhcp]}, {get_attr: [private_mgmt_subnet, enable_dhcp]} ]}
+                          - { get_attr: [subnet_v6, enable_dhcp] }
+                        $ETH_VERSION :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, ip_version]}, {get_attr: [private_mgmt_subnet, ip_version]} ]}
+                          - { get_attr: [subnet_v6, ip_version] }
+                        $ETH_GATEWAY :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, gateway_ip]}, {get_attr: [private_mgmt_subnet, gateway_ip]} ]}
+                          - { get_attr: [subnet_v6, gateway_ip] }
+                        $THIS_VM_SECOND_PORT:
+                          if:
+                          - and:
+                            - condition_ipv4_provider_or_floating
+                            - condition_enable_ipv6_network
+                          - str_replace:
+                              template: |
+                                "eth$indexIpAddress" : "$ETH_IP",
+                                "eth$indexIsDHCP"    : "false",
+                                "eth$indexIpVersion" : "$ETH_VERSION",
+                                "eth$indexIpGateway" : "$ETH_GATEWAY",
+                              params:
+                                $index: 1
+                                $ETH_IP  : { get_attr: [db2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                                $ETH_DHCP : { get_attr: [subnet_v6, enable_dhcp] }
+                                $ETH_VERSION : { get_attr: [subnet_v6, ip_version] }
+                                $ETH_GATEWAY : { get_attr: [subnet_v6, gateway_ip] }
+                          - "No Second Port"
+
+  # ##########################################################################
+  # ##  DATABASE VM 3
+  # ##########################################################################
+
+  # OPTIONAL Create IPV4 port
+  db3_mgmt_port_v4:
+    type: OS::Neutron::Port
+    properties:
+      network_id: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4}, {get_resource: private_mgmt_net}]}
+      security_groups:
+           - {get_resource: db_security_groupv4 }
+      fixed_ips:
+          - subnet: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4_subnet_id}, { get_resource: private_mgmt_subnet }] }
+    condition: condition_ipv4_provider_or_floating
+
+  # OPTIONAL Create IPV6 port
+  db3_mgmt_port_v6:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: public_net_v6 }
+      security_groups:
+          - {get_resource: db_security_groupv6 }
+      fixed_ips:
+          - subnet: { get_param: public_net_v6_subnet_id }
+    condition: condition_enable_ipv6_network
+
+  # Create Cinder volumes for DB VMs
+  db3_vol:
+    type: OS::Cinder::Volume
+    #external_id: { get_param: db3_vol_id }
+    deletion_policy: Retain
+    #deletion_policy: Delete
+    properties:
+      availability_zone: nova
+      #name: "db3-volume"
+      name: {list_join: ['-', [ "db3-volume" , {get_param: "OS::stack_name"} ]]}
+      size: 200
+      #size: 10
+
+  db3_vol_att:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      volume_id: { get_resource: db3_vol }
+      instance_uuid: { get_resource: db3 }
+      mountpoint: /dev/vdc
+
+  db3_boot_vol:
+    type: OS::Cinder::Volume
+    deletion_policy: Delete
+    properties:
+      description:
+      image: { get_param: db_image_id }
+      name: {list_join: ['-', [ "db3_boot_vol" , {get_param: "OS::stack_name"} ]]}
+      size: 10
+
+  # Create a HA cluster for 3 db database VMs
+  db3:
+    type: OS::Nova::Server
+    depends_on: [ db3_vol, db3_boot_vol ]
+    properties:
+       key_name: { get_resource: user_public_key }
+       name: {list_join: ['-', [ {get_param: vm_name_prefix}, "db3" ]]}
+       block_device_mapping_v2: [{ device_name: "vda", volume_id : { get_resource : db3_boot_vol }, delete_on_termination : "true" }]
+       availability_zone: { get_param: availability_zone }
+       scheduler_hints:
+         group: { get_resource: db_cluster }
+       flavor: { get_param: db_flavor_id }
+       networks:
+         if:
+            - and:
+              - condition_ipv4_provider_or_floating
+              - condition_enable_ipv6_network
+            - [port: {get_resource: db3_mgmt_port_v4}, port: { get_resource: db3_mgmt_port_v6 }]
+            - if:
+                - condition_ipv4_provider_or_floating
+                - [port: {get_resource: db3_mgmt_port_v4}]
+                - [port: {get_resource: db3_mgmt_port_v6}]
+
+       config_drive: True
+       user_data_format: RAW
+       user_data:
+         str_replace:
+           template: |
+              #cloud-config
+              write_files:
+               -   content: |
+                      {
+                        "ssh-keypair" : "$PRIVATE_KEYPAIR",
+                        "internal-public-key" : "$PUBLIC_KEYPAIR",
+                        "user-public-key" : "$USER_PUBLIC_KEYPAIR",
+                        "ntp_servers" : "$NTP_SERVERS",
+                        "hostname" : "$HOSTNAME",
+                        "vnfm-db1-ip" : "$DB1_IP",
+                        "vnfm-db2-ip" : "$DB2_IP",
+                        "vnfm-db3-ip" : "$DB3_IP",
+                        "lb1-ip" : "$LB1_IP",
+                        "lb2-ip" : "$LB2_IP",
+                        "app1-ip" : "$APP1_IP",
+                        "app2-ip" : "$APP2_IP",
+                        "lb-vip": "$LB_VIP",
+                        "vm-type": "db",
+                        "vm-id": "db3",
+                        "stackId": "$STACK_ID",
+                        $THIS_VM_PORT_INFO
+                      }
+           params:
+               $PRIVATE_KEYPAIR: { get_attr: [internal_keypair, private_key] }
+               $PUBLIC_KEYPAIR: { get_attr: [internal_keypair, public_key]}
+               $USER_PUBLIC_KEYPAIR: { get_param: vnfm_public_key }
+               $NTP_SERVERS: { get_param: ntp_servers }
+               $STACK_ID : {get_param: "OS::stack_id"}
+               $HOSTNAME : { list_join: ['-', [ {get_param: vm_name_prefix}, "db3" ]] }
+               $LB1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $APP1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $APP2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB_VIP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }                 
+               $DB1_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB2_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB3_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db3_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db3_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $THIS_VM_PORT_INFO:
+                 str_replace:
+                      template: |
+                        "eth$indexIpAddress" : "$ETH_IP",
+                        "eth$indexIsDHCP"    : "false",
+                        "eth$indexIpVersion" : "$ETH_VERSION",
+                        "eth$indexIpGateway" : "$ETH_GATEWAY",
+                        $THIS_VM_SECOND_PORT
+                      params:
+                        $index: 0
+                        $ETH_IP  :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [db3_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [db3_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                        $ETH_DHCP :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, enable_dhcp]}, {get_attr: [private_mgmt_subnet, enable_dhcp]} ]}
+                          - { get_attr: [subnet_v6, enable_dhcp] }
+                        $ETH_VERSION :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, ip_version]}, {get_attr: [private_mgmt_subnet, ip_version]} ]}
+                          - { get_attr: [subnet_v6, ip_version] }
+                        $ETH_GATEWAY :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, gateway_ip]}, {get_attr: [private_mgmt_subnet, gateway_ip]} ]}
+                          - { get_attr: [subnet_v6, gateway_ip] }
+                        $THIS_VM_SECOND_PORT:
+                          if:
+                          - and:
+                            - condition_ipv4_provider_or_floating
+                            - condition_enable_ipv6_network
+                          - str_replace:
+                              template: |
+                                "eth$indexIpAddress" : "$ETH_IP",
+                                "eth$indexIsDHCP"    : "false",
+                                "eth$indexIpVersion" : "$ETH_VERSION",
+                                "eth$indexIpGateway" : "$ETH_GATEWAY",
+                              params:
+                                $index: 1
+                                $ETH_IP  : { get_attr: [db3_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                                $ETH_DHCP : { get_attr: [subnet_v6, enable_dhcp] }
+                                $ETH_VERSION : { get_attr: [subnet_v6, ip_version] }
+                                $ETH_GATEWAY : { get_attr: [subnet_v6, gateway_ip] }
+                          - "No Second Port"
+
+# ##########################################################################
+  # ##  VNFM APP VM 1
+  # ##########################################################################
+
+  # OPTIONAL Create IPV4 port
+  app1_mgmt_port_v4:
+    type: OS::Neutron::Port
+    properties:
+      network_id: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4}, {get_resource: private_mgmt_net}]}
+      security_groups:
+           - {get_resource: app_security_groupv4 }
+      fixed_ips:
+          - subnet: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4_subnet_id}, { get_resource: private_mgmt_subnet }] }
+    condition: condition_ipv4_provider_or_floating
+
+  # OPTIONAL Create IPV6 port
+  app1_mgmt_port_v6:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: public_net_v6 }
+      security_groups:
+          - {get_resource: app_security_groupv6 }
+      fixed_ips:
+          - subnet: { get_param: public_net_v6_subnet_id }
+    condition: condition_enable_ipv6_network
+
+
+  # Create Cinder volumes for app VMs
+  app1_vol:
+    type: OS::Cinder::Volume
+    #external_id: { get_param: app1_vol_id }
+    deletion_policy: Retain
+    #deletion_policy: Delete
+    properties:
+      availability_zone: nova
+      #name: "app1-volume"
+      name: {list_join: ['-', [ "app1-volume" , {get_param: "OS::stack_name"} ]]}
+      size: 40
+      #size: 10
+
+  app1_vol_att:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      volume_id: { get_resource: app1_vol }
+      instance_uuid: { get_resource: app1 }
+      mountpoint: /dev/vdc
+
+  app1_boot_vol:
+    type: OS::Cinder::Volume
+    deletion_policy: Delete
+    properties:
+      description:
+      image: { get_param: app_image_id }
+      name: {list_join: ['-', [ "app1_boot_vol" , {get_param: "OS::stack_name"} ]]}
+      size: 10
+
+  # Create a HA cluster for 3 app database VMs
+  app1:
+    type: OS::Nova::Server
+    depends_on: [ app1_vol, app1_boot_vol, db1_vol_att, db2_vol_att, db3_vol_att ]
+    properties:
+       key_name: { get_resource: user_public_key }
+       name: {list_join: ['-', [ {get_param: vm_name_prefix}, "app1" ]]}
+       block_device_mapping_v2: [{ device_name: "vda", volume_id : { get_resource : app1_boot_vol }, delete_on_termination : "true" }]
+       availability_zone: { get_param: availability_zone }
+       scheduler_hints:
+         group: { get_resource: app_cluster }
+       flavor: { get_param: app_flavor_id }
+       networks:
+         if:
+            - and:
+              - condition_ipv4_provider_or_floating
+              - condition_enable_ipv6_network
+            - [port: {get_resource: app1_mgmt_port_v4}, port: { get_resource: app1_mgmt_port_v6 }]
+            - if:
+                - condition_ipv4_provider_or_floating
+                - [port: {get_resource: app1_mgmt_port_v4}]
+                - [port: {get_resource: app1_mgmt_port_v6}]
+
+       config_drive: True
+       user_data_format: RAW
+       user_data:
+         str_replace:
+           template: |
+              #cloud-config
+              write_files:
+               -   content: |
+                      {
+                        "ssh-keypair"          : "$PRIVATE_KEYPAIR",
+                        "internal-public-key"  : "$PUBLIC_KEYPAIR",
+                        "user-public-key"      : "$USER_PUBLIC_KEYPAIR",
+                        "ntp_servers"          : "$NTP_SERVERS",
+                        "hostname"             : "$HOSTNAME",
+                        "vnfm-app-cluster-ips" : { $APP1_MGMT_IP, $APP2_MGMT_IP },
+                        $THIS_VM_PORT_INFO
+                        "vnfm-db1-ip"          : "$DB1_IP",
+                        "vnfm-db2-ip"          : "$DB2_IP",
+                        "vnfm-db3-ip"          : "$DB3_IP",
+                        "lb1-ip"               : "$LB1_IP",
+                        "lb2-ip"               : "$LB2_IP",
+                        "app1-ip"              : "$APP1_IP",
+                        "app2-ip"              : "$APP2_IP",
+                        "lb-vip"               : "$LB_VIP",
+                        "vm-type"              : "app",
+                        "vm-id"                : "app1",
+                        "vnfm-lb-vip-v4"       : "$LB_IP_VIP_V4",
+                        "vnfm-lb-vip-v6"       : "$LB_IP_VIP_V6",
+                        $IP4_FLOATING_VIP
+                        "vnfmName"             : "$VNFM_NAME",
+                        "stackId"              : "$STACK_ID"                        
+                      }
+           params:
+               $PRIVATE_KEYPAIR: { get_attr: [internal_keypair, private_key] }
+               $PUBLIC_KEYPAIR: { get_attr: [internal_keypair, public_key]}
+               $USER_PUBLIC_KEYPAIR: { get_param: vnfm_public_key }
+               $NTP_SERVERS: { get_param: ntp_servers }
+               $VNFM_NAME : {get_param: "OS::stack_name"}
+               $STACK_ID : {get_param: "OS::stack_id"}
+               $HOSTNAME : { list_join: ['-', [ {get_param: vm_name_prefix}, "app1" ]] }
+               $APP1_MGMT_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - list_join: [': ', ['vnfm-app1-ip',{ get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }]]
+                   - list_join: [': ', ['vnfm-app1-ip',{ get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }]]
+
+               $APP2_MGMT_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - list_join: [': ', ['vnfm-app2-ip',{ get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }]]
+                   - list_join: [': ', ['vnfm-app2-ip',{ get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }]]
+
+               $DB1_IP :
+                         if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [db1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [db1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB2_IP :
+                         if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [db2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [db2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB3_IP :
+                         if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [db3_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [db3_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB_VIP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }                   
+               $APP1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $APP2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB_IP_VIP_V4 :
+                         if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                          - '127.0.0.0'
+               $LB_IP_VIP_V6 :
+                         if:
+                          - condition_enable_ipv6_network
+                          - { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }
+                          - '::1'
+               $THIS_VM_PORT_INFO:
+                 str_replace:
+                      template: |
+                        "eth$indexIpAddress" : "$ETH_IP",
+                        "eth$indexIsDHCP"    : "false",
+                        "eth$indexIpVersion" : "$ETH_VERSION",
+                        "eth$indexIpGateway" : "$ETH_GATEWAY",
+                        $THIS_VM_SECOND_PORT
+                      params:
+                        $index: 0
+                        $ETH_IP  :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                        $ETH_DHCP :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, enable_dhcp]}, {get_attr: [private_mgmt_subnet, enable_dhcp]} ]}
+                          - { get_attr: [subnet_v6, enable_dhcp] }
+                        $ETH_VERSION :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, ip_version]}, {get_attr: [private_mgmt_subnet, ip_version]} ]}
+                          - { get_attr: [subnet_v6, ip_version] }
+                        $ETH_GATEWAY :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, gateway_ip]}, {get_attr: [private_mgmt_subnet, gateway_ip]} ]}
+                          - { get_attr: [subnet_v6, gateway_ip] }
+                        $THIS_VM_SECOND_PORT:
+                          if:
+                          - and:
+                            - condition_ipv4_provider_or_floating
+                            - condition_enable_ipv6_network
+                          - str_replace:
+                              template: |
+                                "eth$indexIpAddress" : "$ETH_IP",
+                                "eth$indexIsDHCP"    : "false",
+                                "eth$indexIpVersion" : "$ETH_VERSION",
+                                "eth$indexIpGateway" : "$ETH_GATEWAY",
+                              params:
+                                $index: 1
+                                $ETH_IP  : { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                                $ETH_DHCP : { get_attr: [subnet_v6, enable_dhcp] }
+                                $ETH_VERSION : { get_attr: [subnet_v6, ip_version] }
+                                $ETH_GATEWAY : { get_attr: [subnet_v6, gateway_ip] }
+                          - "No Second Port"
+               $IP4_FLOATING_VIP :
+                 if:
+                   - condition_floating_ip_support
+                   - str_replace:
+                       template: |
+                         "vnfm-lb-floating-vip-v4" : "$LB_FLOATING_VIP",
+                       params:
+                         $LB_FLOATING_VIP: { get_attr: [lb_vip_port_v4_floating_ip, floating_ip_address] }
+                   -
+
+# ##########################################################################
+  # ##  VNFM APP VM 2
+  # ##########################################################################
+
+  # OPTIONAL Create IPV4 port
+  app2_mgmt_port_v4:
+    type: OS::Neutron::Port
+    properties:
+      network_id: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4}, {get_resource: private_mgmt_net}]}
+      security_groups:
+           - {get_resource: app_security_groupv4 }
+      fixed_ips:
+          - subnet: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4_subnet_id}, { get_resource: private_mgmt_subnet }] }
+    condition: condition_ipv4_provider_or_floating
+
+  # OPTIONAL Create IPV6 port
+  app2_mgmt_port_v6:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: public_net_v6 }
+      security_groups:
+          - {get_resource: app_security_groupv6 }
+      fixed_ips:
+          - subnet: { get_param: public_net_v6_subnet_id }
+    condition: condition_enable_ipv6_network
+
+  # Create Cinder volumes for app VMs
+  app2_vol:
+    type: OS::Cinder::Volume
+    #external_id: { get_param: app2_vol_id }
+    deletion_policy: Retain
+    #deletion_policy: Delete
+    properties:
+      availability_zone: nova
+      #name: "app2-volume"
+      name: {list_join: ['-', [ "app2-volume" , {get_param: "OS::stack_name"} ]]}
+      size: 40
+      #size: 10
+
+  app2_vol_att:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      volume_id: { get_resource: app2_vol }
+      instance_uuid: { get_resource: app2 }
+      mountpoint: /dev/vdc
+
+  app2_boot_vol:
+    type: OS::Cinder::Volume
+    deletion_policy: Delete
+    properties:
+      description:
+      image: { get_param: app_image_id }
+      name: {list_join: ['-', [ "app2_boot_vol" , {get_param: "OS::stack_name"} ]]}
+      size: 10
+
+  # Create a HA cluster for 3 app database VMs
+  app2:
+    type: OS::Nova::Server
+    depends_on: [ app2_vol, app2_boot_vol, db1_vol_att, db2_vol_att, db3_vol_att ]
+    properties:
+       key_name: { get_resource: user_public_key }
+       name: {list_join: ['-', [ {get_param: vm_name_prefix}, "app2" ]]}
+       block_device_mapping_v2: [{ device_name: "vda", volume_id : { get_resource : app2_boot_vol }, delete_on_termination : "true" }]
+       availability_zone: { get_param: availability_zone }
+       scheduler_hints:
+         group: { get_resource: app_cluster }
+       flavor: { get_param: app_flavor_id }
+       networks:
+         if:
+            - and:
+              - condition_ipv4_provider_or_floating
+              - condition_enable_ipv6_network
+            - [port: {get_resource: app2_mgmt_port_v4}, port: { get_resource: app2_mgmt_port_v6 }]
+            - if:
+                - condition_ipv4_provider_or_floating
+                - [port: {get_resource: app2_mgmt_port_v4}]
+                - [port: {get_resource: app2_mgmt_port_v6}]
+
+       config_drive: True
+       user_data_format: RAW
+       user_data:
+         str_replace:
+           template: |
+              #cloud-config
+              write_files:
+               -   content: |
+                      {
+                        "ssh-keypair"          : "$PRIVATE_KEYPAIR",
+                        "internal-public-key"  : "$PUBLIC_KEYPAIR",
+                        "user-public-key"      : "$USER_PUBLIC_KEYPAIR",
+                        "ntp_servers"          : "$NTP_SERVERS",
+                        "hostname"             : "$HOSTNAME",
+                        "vnfm-app-cluster-ips" : { $APP1_MGMT_IP, $APP2_MGMT_IP },
+                        $THIS_VM_PORT_INFO
+                        "vnfm-db1-ip"          : "$DB1_IP",
+                        "vnfm-db2-ip"          : "$DB2_IP",
+                        "vnfm-db3-ip"          : "$DB3_IP",
+                        "lb1-ip"               : "$LB1_IP",
+                        "lb2-ip"               : "$LB2_IP",
+                        "app1-ip"              : "$APP1_IP",
+                        "app2-ip"              : "$APP2_IP",
+                        "lb-vip"               : "$LB_VIP",
+                        "vm-type"              : "app",
+                        "vm-id"                : "app2",              
+                        "vnfm-lb-vip-v4"       : "$LB_IP_VIP_V4",
+                        "vnfm-lb-vip-v6"       : "$LB_IP_VIP_V6",
+                        $IP4_FLOATING_VIP
+                        "vnfmName"             : "$VNFM_NAME",
+                        "stackId"              : "$STACK_ID"
+                      }
+           params:
+               $PRIVATE_KEYPAIR: { get_attr: [internal_keypair, private_key] }
+               $PUBLIC_KEYPAIR: { get_attr: [internal_keypair, public_key]}
+               $USER_PUBLIC_KEYPAIR: { get_param: vnfm_public_key }
+               $NTP_SERVERS: { get_param: ntp_servers }
+               $VNFM_NAME : {get_param: "OS::stack_name"}
+               $STACK_ID : {get_param: "OS::stack_id"}
+               $HOSTNAME : { list_join: ['-', [ {get_param: vm_name_prefix}, "app2" ]] }
+               $APP1_MGMT_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - list_join: [': ', ['vnfm-app1-ip',{ get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }]]
+                   - list_join: [': ', ['vnfm-app1-ip',{ get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }]]
+
+               $APP2_MGMT_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - list_join: [': ', ['vnfm-app2-ip',{ get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }]]
+                   - list_join: [': ', ['vnfm-app2-ip',{ get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }]]
+
+               $DB1_IP :
+                         if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [db1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [db1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB2_IP :
+                         if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [db2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [db2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB3_IP :
+                         if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [db3_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [db3_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB_VIP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }                   
+               $APP1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $APP2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }                          
+               $LB_IP_VIP_V4 :
+                         if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                          - '127.0.0.0'
+               $LB_IP_VIP_V6 :
+                         if:
+                          - condition_enable_ipv6_network
+                          - { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }
+                          - '::1'
+               $THIS_VM_PORT_INFO:
+                 str_replace:
+                      template: |
+                        "eth$indexIpAddress" : "$ETH_IP",
+                        "eth$indexIsDHCP"    : "false",
+                        "eth$indexIpVersion" : "$ETH_VERSION",
+                        "eth$indexIpGateway" : "$ETH_GATEWAY",
+                        $THIS_VM_SECOND_PORT
+                      params:
+                        $index: 0
+                        $ETH_IP  :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                        $ETH_DHCP :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, enable_dhcp]}, {get_attr: [private_mgmt_subnet, enable_dhcp]} ]}
+                          - { get_attr: [subnet_v6, enable_dhcp] }
+                        $ETH_VERSION :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, ip_version]}, {get_attr: [private_mgmt_subnet, ip_version]} ]}
+                          - { get_attr: [subnet_v6, ip_version] }
+                        $ETH_GATEWAY :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, gateway_ip]}, {get_attr: [private_mgmt_subnet, gateway_ip]} ]}
+                          - { get_attr: [subnet_v6, gateway_ip] }
+                        $THIS_VM_SECOND_PORT:
+                          if:
+                          - and:
+                            - condition_ipv4_provider_or_floating
+                            - condition_enable_ipv6_network
+                          - str_replace:
+                              template: |
+                                "eth$indexIpAddress" : "$ETH_IP",
+                                "eth$indexIsDHCP"    : "false",
+                                "eth$indexIpVersion" : "$ETH_VERSION",
+                                "eth$indexIpGateway" : "$ETH_GATEWAY",
+                              params:
+                                $index: 1
+                                $ETH_IP  : { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                                $ETH_DHCP : { get_attr: [subnet_v6, enable_dhcp] }
+                                $ETH_VERSION : { get_attr: [subnet_v6, ip_version] }
+                                $ETH_GATEWAY : { get_attr: [subnet_v6, gateway_ip] }
+                          - "No Second Port"
+               $IP4_FLOATING_VIP :
+                 if:
+                   - condition_floating_ip_support
+                   - str_replace:
+                       template: |
+                         "vnfm-lb-floating-vip-v4" : "$LB_FLOATING_VIP",
+                       params:
+                         $LB_FLOATING_VIP: { get_attr: [lb_vip_port_v4_floating_ip, floating_ip_address] }
+                   -
+
+# ##########################################################################
+  # ##  VNFM LB IP VIP
+  # ##########################################################################
+
+  # OPTIONAL Create IPV4 port
+  lb_vip_port_v4:
+    type: OS::Neutron::Port
+    properties:
+      network_id: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4}, {get_resource: private_mgmt_net}]}
+      security_groups:
+           - {get_resource: lb_security_groupv4 }
+      fixed_ips:
+          - subnet: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4_subnet_id}, { get_resource: private_mgmt_subnet }] }
+    condition: condition_ipv4_provider_or_floating
+  lb_vip_port_v4_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: { get_param: public_net_v4 }
+      port_id: { get_resource: lb_vip_port_v4 }
+    condition: condition_floating_ip_support
+
+  # OPTIONAL Create IPV6 port
+  lb_vip_port_v6:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: public_net_v6 }
+      security_groups:
+          - {get_resource: lb_security_groupv6 }
+      fixed_ips:
+          - subnet: { get_param: public_net_v6_subnet_id }
+    condition: condition_enable_ipv6_network
+
+
+# ##########################################################################
+  # ##  VNFM LB VM 1
+  # ##########################################################################
+
+  # OPTIONAL Create IPV4 port
+  lb_lb1_mgmt_port_v4:
+    type: OS::Neutron::Port
+    properties:
+      network_id: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4}, {get_resource: private_mgmt_net}]}
+      security_groups:
+           - {get_resource: lb_security_groupv4 }
+      allowed_address_pairs:
+        - ip_address: { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+      fixed_ips:
+          - subnet: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4_subnet_id}, { get_resource: private_mgmt_subnet }] }
+    condition: condition_ipv4_provider_or_floating
+
+  # OPTIONAL Create IPV6 port
+  lb_lb1_mgmt_port_v6:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: public_net_v6 }
+      security_groups:
+          - {get_resource: lb_security_groupv6 }
+      allowed_address_pairs:
+        - ip_address: { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }
+      fixed_ips:
+          - subnet: { get_param: public_net_v6_subnet_id }
+    condition: condition_enable_ipv6_network
+
+  lb1_boot_vol:
+    type: OS::Cinder::Volume
+    deletion_policy: Delete
+    properties:
+      description:
+      image: { get_param: lb_image_id }
+      name: {list_join: ['-', [ "lb1_boot_vol" , {get_param: "OS::stack_name"} ]]}
+      size: 10
+
+  # Create a HA cluster for 3 app database VMs
+  lb1:
+    type: OS::Nova::Server
+    depends_on: [ lb1_boot_vol ]
+    properties:
+       key_name: { get_resource: user_public_key }
+       name: {list_join: ['-', [ {get_param: vm_name_prefix}, "lb1" ]]}
+       block_device_mapping_v2: [{ device_name: "vda", volume_id : { get_resource : lb1_boot_vol }, delete_on_termination : "true" }]
+       availability_zone: { get_param: availability_zone }
+       scheduler_hints:
+         group: { get_resource: lb_cluster }
+       flavor: { get_param: lb_flavor_id }
+       networks:
+         if:
+            - and:
+              - condition_ipv4_provider_or_floating
+              - condition_enable_ipv6_network
+            - [port: {get_resource: lb_lb1_mgmt_port_v4}, port: { get_resource: lb_lb1_mgmt_port_v6 }]
+            - if:
+                - condition_ipv4_provider_or_floating
+                - [port: {get_resource: lb_lb1_mgmt_port_v4}]
+                - [port: {get_resource: lb_lb1_mgmt_port_v6}]
+
+       config_drive: True
+       user_data_format: RAW
+       user_data:
+         str_replace:
+           template: |
+              #cloud-config
+              write_files:
+               -   content: |
+                      {
+                        "ssh-keypair" : "$PRIVATE_KEYPAIR",
+                        "internal-public-key" : "$PUBLIC_KEYPAIR",
+                        "user-public-key" : "$USER_PUBLIC_KEYPAIR",
+                        "ntp_servers" : "$NTP_SERVERS",
+                        "hostname" : "$HOSTNAME",
+                        "vnfm-db1-ip" : "$DB1_IP",
+                        "vnfm-db2-ip" : "$DB2_IP",
+                        "vnfm-db3-ip" : "$DB3_IP",
+                        "lb1-ip" : "$LB1_IP",
+                        "lb2-ip" : "$LB2_IP",
+                        "lb-vip": "$LB_VIP",
+                        "app1-ip" : "$APP1_IP",
+                        "app2-ip" : "$APP2_IP",
+                        "vm-type" : "lb",
+                        "vm-id"   : "lb1",
+                        "stackId": "$STACK_ID",
+                        $THIS_VM_PORT_INFO
+                        $APP_VMS_PORT_INFO_V4
+                        $APP_VMS_PORT_INFO_V6
+                        $LB_VM_VIP_PORT_INFO
+                        $IP4_FLOATING_VIP
+                      }
+           params:
+               $PRIVATE_KEYPAIR: { get_attr: [internal_keypair, private_key] }
+               $PUBLIC_KEYPAIR: { get_attr: [internal_keypair, public_key]}
+               $USER_PUBLIC_KEYPAIR: { get_param: vnfm_public_key }
+               $NTP_SERVERS: { get_param: ntp_servers }
+               $STACK_ID : {get_param: "OS::stack_id"}
+               $HOSTNAME : { list_join: ['-', [ {get_param: vm_name_prefix}, "lb1" ]] }
+               $LB1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB_VIP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }                   
+               $APP1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $APP2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB1_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB2_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB3_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db3_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db3_mgmt_port_v6, fixed_ips, 0, ip_address] }               
+               $LB_VM_VIP_PORT_INFO:
+                  if:
+                     - and:
+                       - condition_ipv4_provider_or_floating
+                       - condition_enable_ipv6_network
+                     - str_replace:
+                         template: |
+                           "vnfm-lb-vip-v4": "$LB_IP_VIP_V4",
+                           "vnfm-lb-vip-v6": "$LB_IP_VIP_V6"
+                         params:
+                           $LB_IP_VIP_V4 : { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                           $LB_IP_VIP_V6 : { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }
+                     - if:
+                           - condition_ipv4_provider_or_floating
+                           - str_replace:
+                                template: |
+                                   "vnfm-lb-vip-v4": "$LB_IP_VIP_V4"
+                                params:
+                                   $LB_IP_VIP_V4 : { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                           - str_replace:
+                                template: |
+                                   "vnfm-lb-vip-v6": "$LB_IP_VIP_V6"
+                                params:
+                                   $LB_IP_VIP_V6 : { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }
+               $APP_VMS_PORT_INFO_V4:
+                            if:
+                              - condition_ipv4_provider_or_floating
+                              - str_replace:
+                                  template: |
+                                    "vnfm-app1-ip-v4" : "$APP1_IP_V4",
+                                    "vnfm-app2-ip-v4" : "$APP2_IP_V4"
+                                  params:
+                                    $APP1_IP_V4 : { get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                                    $APP2_IP_V4 : { get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                              -
+               $APP_VMS_PORT_INFO_V6:
+                           if:
+                             - condition_enable_ipv6_network
+                             - str_replace:
+                                   template: |
+                                       "vnfm-app1-ip-v6" : "$APP1_IP_V6",
+                                       "vnfm-app2-ip-v6" : "$APP2_IP_V6",
+                                   params:
+                                       $APP1_IP_V6 : { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                                       $APP2_IP_V6 : { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                             -
+               $THIS_VM_PORT_INFO:
+                 str_replace:
+                      template: |
+                        "eth$indexIpAddress" : "$ETH_IP",
+                        "eth$indexIsDHCP"    : "false",
+                        "eth$indexIpVersion" : "$ETH_VERSION",
+                        "eth$indexIpGateway" : "$ETH_GATEWAY",
+                        $THIS_VM_SECOND_PORT
+                      params:
+                        $index: 0
+                        $ETH_IP  :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { get_attr: [lb_lb1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                          - { get_attr: [lb_lb1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                        $ETH_DHCP :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, enable_dhcp]}, {get_attr: [private_mgmt_subnet, enable_dhcp]} ]}
+                          - { get_attr: [subnet_v6, enable_dhcp] }
+                        $ETH_VERSION :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, ip_version]}, {get_attr: [private_mgmt_subnet, ip_version]} ]}
+                          - { get_attr: [subnet_v6, ip_version] }
+                        $ETH_GATEWAY :
+                          if:
+                          - condition_ipv4_provider_or_floating
+                          - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, gateway_ip]}, {get_attr: [private_mgmt_subnet, gateway_ip]} ]}
+                          - { get_attr: [subnet_v6, gateway_ip] }
+                        $THIS_VM_SECOND_PORT:
+                          if:
+                          - and:
+                            - condition_ipv4_provider_or_floating
+                            - condition_enable_ipv6_network
+                          - str_replace:
+                              template: |
+                                "eth$indexIpAddress" : "$ETH_IP",
+                                "eth$indexIsDHCP"    : "false",
+                                "eth$indexIpVersion" : "$ETH_VERSION",
+                                "eth$indexIpGateway" : "$ETH_GATEWAY",
+                              params:
+                                $index: 1
+                                $ETH_IP  : { get_attr: [lb_lb1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                                $ETH_DHCP : { get_attr: [subnet_v6, enable_dhcp] }
+                                $ETH_VERSION : { get_attr: [subnet_v6, ip_version] }
+                                $ETH_GATEWAY : { get_attr: [subnet_v6, gateway_ip] }
+                          - "No Second Port"
+               $IP4_FLOATING_VIP :
+                 if:
+                   - condition_floating_ip_support
+                   - str_replace:
+                       template: |
+                         "vnfm-lb-floating-vip-v4" : "$LB_FLOATING_VIP"
+                       params:
+                         $LB_FLOATING_VIP: { get_attr: [lb_vip_port_v4_floating_ip, floating_ip_address] }
+                   -
+
+  # ##########################################################################
+  # ##  VNFM LB VM 2
+  # ##########################################################################
+
+  # OPTIONAL Create IPV4 port
+  lb_lb2_mgmt_port_v4:
+    type: OS::Neutron::Port
+    properties:
+      network_id: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4}, {get_resource: private_mgmt_net}]}
+      security_groups:
+           - {get_resource: lb_security_groupv4 }
+      allowed_address_pairs:
+        - ip_address: { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+      fixed_ips:
+          - subnet: {if: ["condition_enable_ipv4_network", {get_param: public_net_v4_subnet_id}, { get_resource: private_mgmt_subnet }] }
+    condition: condition_ipv4_provider_or_floating
+
+  # OPTIONAL Create IPV6 port
+  lb_lb2_mgmt_port_v6:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: public_net_v6 }
+      security_groups:
+          - {get_resource: lb_security_groupv6 }
+      allowed_address_pairs:
+        - ip_address: { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }
+      fixed_ips:
+          - subnet: { get_param: public_net_v6_subnet_id }
+    condition: condition_enable_ipv6_network
+
+  lb2_boot_vol:
+    type: OS::Cinder::Volume
+    deletion_policy: Delete
+    properties:
+      description:
+      image: { get_param: lb_image_id }
+      name: {list_join: ['-', [ "lb2_boot_vol" , {get_param: "OS::stack_name"} ]]}
+      size: 10
+
+  lb2:
+    type: OS::Nova::Server
+    depends_on: [ lb2_boot_vol ]
+    properties:
+       key_name: { get_resource: user_public_key }
+       name: {list_join: ['-', [ {get_param: vm_name_prefix}, "lb2" ]]}
+       block_device_mapping_v2: [{ device_name: "vda", volume_id : { get_resource : lb2_boot_vol }, delete_on_termination : "true" }]
+       availability_zone: { get_param: availability_zone }
+       scheduler_hints:
+         group: { get_resource: lb_cluster }
+       flavor: { get_param: lb_flavor_id }
+       networks:
+         if:
+            - and:
+              - condition_ipv4_provider_or_floating
+              - condition_enable_ipv6_network
+            - [port: {get_resource: lb_lb2_mgmt_port_v4}, port: { get_resource: lb_lb2_mgmt_port_v6 }]
+            - if:
+                - condition_ipv4_provider_or_floating
+                - [port: {get_resource: lb_lb2_mgmt_port_v4}]
+                - [port: {get_resource: lb_lb2_mgmt_port_v6}]
+
+       config_drive: True
+       user_data_format: RAW
+       user_data:
+         str_replace:
+           template: |
+              #cloud-config
+              write_files:
+               -   content: |
+                      {
+                        "ssh-keypair" : "$PRIVATE_KEYPAIR",
+                        "internal-public-key" : "$PUBLIC_KEYPAIR",
+                        "user-public-key" : "$USER_PUBLIC_KEYPAIR",
+                        "ntp_servers" : "$NTP_SERVERS",
+                        "hostname" : "$HOSTNAME",
+                        "vnfm-db1-ip" : "$DB1_IP",
+                        "vnfm-db2-ip" : "$DB2_IP",
+                        "vnfm-db3-ip" : "$DB3_IP",
+                        "lb1-ip" : "$LB1_IP",
+                        "lb2-ip" : "$LB2_IP",
+                        "lb-vip": "$LB_VIP",
+                        "vm-type": "lb",
+                        "vm-id": "lb2",       
+                        "app1-ip" : "$APP1_IP",
+                        "app2-ip" : "$APP2_IP",
+                        "stackId": "$STACK_ID",
+                        $THIS_VM_PORT_INFO
+                        $APP_VMS_PORT_INFO_V4
+                        $APP_VMS_PORT_INFO_V6
+                        $LB_VM_VIP_PORT_INFO
+                        $IP4_FLOATING_VIP
+                      }
+           params:
+               $PRIVATE_KEYPAIR: { get_attr: [internal_keypair, private_key] }
+               $PUBLIC_KEYPAIR: { get_attr: [internal_keypair, public_key]}
+               $USER_PUBLIC_KEYPAIR: { get_param: vnfm_public_key }
+               $NTP_SERVERS: { get_param: ntp_servers }
+               $STACK_ID : {get_param: "OS::stack_id"}
+               $HOSTNAME : { list_join: ['-', [ {get_param: vm_name_prefix}, "lb2" ]] }
+               $LB1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_lb2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_lb2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $LB_VIP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }                   
+               $APP1_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $APP2_IP:
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB1_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB2_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+               $DB3_IP :
+                 if:
+                   - condition_ipv4_provider_or_floating
+                   - { get_attr: [db3_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                   - { get_attr: [db3_mgmt_port_v6, fixed_ips, 0, ip_address] }               
+               $LB_VM_VIP_PORT_INFO:
+                  if:
+                     - and:
+                       - condition_ipv4_provider_or_floating
+                       - condition_enable_ipv6_network
+                     - str_replace:
+                         template: |
+                           "vnfm-lb-vip-v4": "$LB_IP_VIP_V4",
+                           "vnfm-lb-vip-v6": "$LB_IP_VIP_V6"
+                         params:
+                           $LB_IP_VIP_V4 : { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                           $LB_IP_VIP_V6 : { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }
+                     - if:
+                           - condition_ipv4_provider_or_floating
+                           - str_replace:
+                                template: |
+                                   "vnfm-lb-vip-v4": "$LB_IP_VIP_V4"
+                                params:
+                                    $LB_IP_VIP_V4 : { get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address] }
+                           - str_replace:
+                                template: |
+                                   "vnfm-lb-vip-v6": "$LB_IP_VIP_V6"
+                                params:
+                                   $LB_IP_VIP_V6 : { get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address] }
+               $APP_VMS_PORT_INFO_V4:
+                            if:
+                              - condition_ipv4_provider_or_floating
+                              - str_replace:
+                                  template: |
+                                    "vnfm-app1-ip-v4" : "$APP1_IP_V4",
+                                    "vnfm-app2-ip-v4" : "$APP2_IP_V4"
+                                  params:
+                                    $APP1_IP_V4 : { get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                                    $APP2_IP_V4 : { get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                              -
+               $APP_VMS_PORT_INFO_V6:
+                           if:
+                             - condition_enable_ipv6_network
+                             - str_replace:
+                                   template: |
+                                       "vnfm-app1-ip-v6" : "$APP1_IP_V6",
+                                       "vnfm-app2-ip-v6" : "$APP2_IP_V6",
+                                   params:
+                                       $APP1_IP_V6 : { get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                                       $APP2_IP_V6 : { get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                             -
+               $THIS_VM_PORT_INFO:
+                 str_replace:
+                      template: |
+                        "eth$indexIpAddress" : "$ETH_IP",
+                        "eth$indexIsDHCP"    : "false",
+                        "eth$indexIpVersion" : "$ETH_VERSION",
+                        "eth$indexIpGateway" : "$ETH_GATEWAY",
+                        $THIS_VM_SECOND_PORT
+                      params:
+                        $index: 0
+                        $ETH_IP  :
+                          if:
+                            - condition_ipv4_provider_or_floating
+                            - { get_attr: [lb_lb2_mgmt_port_v4, fixed_ips, 0, ip_address] }
+                            - { get_attr: [lb_lb2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                        $ETH_DHCP :
+                          if:
+                            - condition_ipv4_provider_or_floating
+                            - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, enable_dhcp]}, {get_attr: [private_mgmt_subnet, enable_dhcp]} ]}
+                            - { get_attr: [subnet_v6, enable_dhcp] }
+                        $ETH_VERSION :
+                          if:
+                            - condition_ipv4_provider_or_floating
+                            - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, ip_version]}, {get_attr: [private_mgmt_subnet, ip_version]} ]}
+                            - { get_attr: [subnet_v6, ip_version] }
+                        $ETH_GATEWAY :
+                          if:
+                            - condition_ipv4_provider_or_floating
+                            - { if: ["condition_enable_ipv4_network", {get_attr: [subnet_v4, gateway_ip]}, {get_attr: [private_mgmt_subnet, gateway_ip]} ]}
+                            - { get_attr: [subnet_v6, gateway_ip] }
+                        $THIS_VM_SECOND_PORT:
+                          if:
+                          - and:
+                            - condition_ipv4_provider_or_floating
+                            - condition_enable_ipv6_network
+                          - str_replace:
+                              template: |
+                                "eth$indexIpAddress" : "$ETH_IP",
+                                "eth$indexIsDHCP"    : "false",
+                                "eth$indexIpVersion" : "$ETH_VERSION",
+                                "eth$indexIpGateway" : "$ETH_GATEWAY",
+                              params:
+                                $index: 1
+                                $ETH_IP  : { get_attr: [lb_lb2_mgmt_port_v6, fixed_ips, 0, ip_address] }
+                                $ETH_DHCP : { get_attr: [subnet_v6, enable_dhcp] }
+                                $ETH_VERSION : { get_attr: [subnet_v6, ip_version] }
+                                $ETH_GATEWAY : { get_attr: [subnet_v6, gateway_ip] }
+                          - "No Second Port"
+               $IP4_FLOATING_VIP :
+                 if:
+                   - condition_floating_ip_support
+                   - str_replace:
+                       template: |
+                         "vnfm-lb-floating-vip-v4" : "$LB_FLOATING_VIP"
+                       params:
+                         $LB_FLOATING_VIP: { get_attr: [lb_vip_port_v4_floating_ip, floating_ip_address] }
+                   -
+
+outputs:
+  db1_ipv4:
+    description: The Provider or Tenant IPv4 for the db1 Private Management
+    condition: condition_ipv4_provider_or_floating
+    value:
+      get_attr: [db1_mgmt_port_v4, fixed_ips, 0, ip_address]
+  db2_ipv4:
+    description: The Provider or Tenant IPv4 for the db2 Private Management
+    condition: condition_ipv4_provider_or_floating
+    value:
+      get_attr: [db2_mgmt_port_v4, fixed_ips, 0, ip_address]
+  db3_ipv4:
+    description: The Provider or Tenant IPv4 for the db3 Private Management
+    condition: condition_ipv4_provider_or_floating
+    value:
+      get_attr: [db3_mgmt_port_v4, fixed_ips, 0, ip_address]
+
+  db1_ipv6:
+    description: The IPv6 for the db1 Private Management
+    condition: condition_enable_ipv6_network
+    value:
+      get_attr: [db1_mgmt_port_v6, fixed_ips, 0, ip_address]
+  db2_ipv6:
+    description: The IPv6 for the db2 Private Management
+    condition: condition_enable_ipv6_network
+    value:
+      get_attr: [db2_mgmt_port_v6, fixed_ips, 0, ip_address]
+  db3_ipv6:
+    description: The IPv6 for the db3 Private Management
+    condition: condition_enable_ipv6_network
+    value:
+      get_attr: [db3_mgmt_port_v6, fixed_ips, 0, ip_address]
+
+  lb_vip_v4:
+    description: "** VNFM Load Balancer common IPv4 address"
+    value:
+      get_attr: [lb_vip_port_v4, fixed_ips, 0, ip_address]
+    condition: condition_ipv4_provider_or_floating
+
+  lb_floating_vip_v4:
+    description: "** VNFM Load Balancer common IPv4 Floating IP (FIP)"
+    value:
+      get_attr: [lb_vip_port_v4_floating_ip, floating_ip_address]
+    condition: condition_floating_ip_support
+
+  lb_vip_v6:
+    description: "** VNFM Load Balancer common IPv6 address"
+    value:
+      get_attr: [lb_vip_port_v6, fixed_ips, 0, ip_address]
+    condition: condition_enable_ipv6_network
+
+  lb1_ipv4:
+    description: "VNFM Load Balancer 1 IPv4 address"
+    value:
+      get_attr: [lb_lb1_mgmt_port_v4, fixed_ips, 0, ip_address]
+    condition: condition_ipv4_provider_or_floating
+
+  lb1_ipv6:
+    description: "VNFM Load Balancer 1 IPv6 address"
+    value:
+      get_attr: [lb_lb1_mgmt_port_v6, fixed_ips, 0, ip_address]
+    condition: condition_enable_ipv6_network
+
+  lb2_ipv4:
+    description: "VNFM Load Balancer 2 IPv4 address"
+    value:
+      get_attr: [lb_lb2_mgmt_port_v4, fixed_ips, 0, ip_address]
+    condition: condition_ipv4_provider_or_floating
+
+  lb2_ipv6:
+    description: "VNFM Load Balancer 2 IPv6 address"
+    value:
+      get_attr: [lb_lb2_mgmt_port_v6, fixed_ips, 0, ip_address]
+    condition: condition_enable_ipv6_network
+
+  app1_ipv4:
+    description: "VNFM Application VM 1 IPv4 address"
+    value:
+      get_attr: [app1_mgmt_port_v4, fixed_ips, 0, ip_address]
+    condition: condition_ipv4_provider_or_floating
+
+  app1_ipv6:
+    description: "VNFM Application VM 1 IPv6 address"
+    value:
+      get_attr: [app1_mgmt_port_v6, fixed_ips, 0, ip_address]
+    condition: condition_enable_ipv6_network
+
+  app2_ipv4:
+    description: "VNFM Application VM 2 IPv4 address"
+    value:
+      get_attr: [app2_mgmt_port_v4, fixed_ips, 0, ip_address]
+    condition: condition_ipv4_provider_or_floating
+
+  app2_ipv6:
+    description: "VNFM Application VM2 IPv6 address"
+    value:
+      get_attr: [app2_mgmt_port_v6, fixed_ips, 0, ip_address]
+    condition: condition_enable_ipv6_network
+
+  db1_cinder_volume:
+     description: The Cinder volume ID for the db1 instance
+     value:
+       get_attr: [db1_vol, show, id]
+
+  db2_cinder_volume:
+     description: The Cinder volume ID for the db2 instance
+     value:
+       get_attr: [db2_vol, show, id]
+
+  db3_cinder_volume:
+     description: The Cinder volume ID for the db3 instance
+     value:
+       get_attr: [db3_vol, show, id]
+
+  app1_cinder_volume:
+     description: The Cinder volume ID for the app1 instance
+     value:
+       get_attr: [app1_vol, show, id]
+
+  app2_cinder_volume:
+     description: The Cinder volume ID for the app2 instance
+     value:
+       get_attr: [app2_vol, show, id]
+
+conditions:
+  condition_enable_ipv4_network: {equals: [{get_param: ipv4_provider_network},true]}
+  condition_floating_ip_support: {equals: [{get_param: ipv4_floating_network},true]}
+  condition_ipv4_provider_or_floating:
+    or:
+    - equals:
+      - get_param: ipv4_provider_network
+      - true
+    - equals:
+      - get_param: ipv4_floating_network
+      - true
+  condition_enable_ipv6_network: {equals: [{get_param: ipv6_provider_network},true]}
+

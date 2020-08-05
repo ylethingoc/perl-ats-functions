@@ -1,0 +1,435 @@
+#!/usr/bin/expect
+
+#exp_internal -f  expect.log 0
+
+set boot_val [lindex $argv 0]
+set ilomip [lindex $argv 1]
+set iso_path [lindex $argv 2]
+set hostname [lindex $argv 3]
+set ipAddress [lindex $argv 4]
+set netmask [lindex $argv 5]
+set gateway [lindex $argv 6]
+set ntpserver [lindex $argv 7]
+
+log_file -noappend Logs//isoinstall_$hostname.log
+
+set send_slow {1 0.02}
+spawn ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=5  -o StrictHostKeyChecking=no Administrator@$ilomip; 
+#spawn ssh -o ServerAliveInterval=60 -o StrictHostKeyChecking=no Administrator@$ilomip;
+
+expect -re ".*password:"
+send -s "Sonus!@#\r"
+
+sleep 5
+
+expect "</>hpiLO->"
+
+sleep 5
+
+send -s "vm cdrom insert  $iso_path\r"
+
+sleep 5
+
+send -s "vm cdrom set boot_once\r"
+
+sleep 5
+
+send -s "vm cdrom get\r"
+
+sleep 5
+
+send -s "power reset\r"
+
+sleep 5
+
+send -s "textcons\r"
+
+sleep 5
+
+expect {
+
+    timeout { send_user "textcons not launched\n"; exit 0 }
+
+    -re ".*Press.*Esc.*to return to the CLI Session"
+
+    }
+
+set timeout 1800
+
+expect {
+
+    -re "boot" { sleep 5; send -s "$boot_val\r" }
+
+    timeout { send_user "boot prompt not found after waiting for 30 mins. Please check manually.\n" }
+
+      }
+
+expect {
+
+    -re "Unsupported Configuration for PSX" { sleep 5; send_user "Hostchecker found, sending F12\n"; send -s "\033\[24~\r" }
+
+    timeout { send_user "Hostchecker not found\n" }
+
+    }
+
+
+set timeout 7200 
+
+expect {
+
+    -re "Reboot" { sleep 5; send_user "REBOOT screen found\n";  send -s "\r" }
+
+    timeout { send_user "REBOOT screen not found after waiting for 120 mins. Please check manually.\n" }
+
+      }
+
+
+set timeout 1800
+
+expect {
+
+    timeout { send_user "Configuration screen not found\n" }
+
+    -re "Sonus Network Configuration" 
+
+    }
+
+set timeout 15
+
+sleep 30
+
+send -s "\r"
+
+expect {
+
+        timeout { send_user "Host Configuration screen not found\n"; exit 0 }
+
+         -re "Host Configuration"    
+
+      }
+
+sleep 10
+
+send_user "Entering hostname\n"
+
+#### Default hostname is psx , so send 3 backspaces before entering hostname
+
+for {set index 0} {$index < 9 } {incr index} {
+
+    send -s "\010"
+
+    sleep 3
+}
+
+sleep 5
+
+send -s $hostname
+
+sleep 10
+
+### Send 4 tabs and press enter after providing hostname
+
+
+for {set index 0} {$index < 4 } {incr index} {
+
+    send -s "\t"
+
+    sleep 10
+}
+
+
+send -s "\r"
+
+sleep 10
+### Use arrow down key to select IP Address and enter ip details
+
+send -s "\033\[B"
+
+sleep 5
+
+send -s "\r"
+
+sleep 5
+
+expect {
+
+        timeout { send_user "Choose IP Format not found\n"; exit 0 }
+
+         -re "Choose IP Format"
+
+      }
+
+send -s "\t"
+
+sleep 10
+
+send -s "\t"
+
+sleep 5
+
+send -s "\r"
+
+sleep 10
+
+for {set index 0} {$index < 9 } {incr index} {
+
+    send -s "\010"
+
+    sleep 3
+}
+
+sleep 5
+
+send -s $ipAddress
+
+sleep 5
+
+send -s "\t"
+
+sleep 5
+
+for {set index 0} {$index < 13 } {incr index} {
+
+    send -s "\010"
+
+    sleep 3
+}
+
+send -s $netmask
+
+sleep 5
+
+send -s "\t"
+
+sleep 5
+
+send -s $gateway
+
+sleep 5
+
+send -s "\t"
+
+sleep 5
+
+send -s "\r"
+
+sleep 5
+
+#### Set timezone ###
+
+send -s "\033\[B"
+
+sleep 5
+
+# set time server
+
+send -s "\033\[B"
+
+sleep 5
+
+send -s "\r"
+
+sleep 5
+
+expect {
+
+        timeout { send_user "Time Server Settings not found\n"; exit 0 }
+
+         -re "Time Server Settings"
+
+      }
+
+send -s $ntpserver 
+
+sleep 5
+
+send -s "\t"
+
+sleep 5
+
+send -s "\r"
+
+sleep 5
+
+
+# click on Save and Quit
+
+send -s "\t"
+
+sleep 5
+
+send -s "\r"
+
+sleep 5
+
+set timeout 3600
+
+expect {
+    
+        timeout { send_user "Pattern not found - Installing PSX Software\n" }
+
+        -re "Installing PSX Software"
+
+       }
+
+
+expect {
+
+            -re "Do you want to change the Generic key" { sleep 5 ; send -s "n\r" }
+
+            timeout { send_user "Did not get pattern - Do you want to change the Generic key\n" }
+
+      }
+
+
+#expect {
+
+#            -re "Enter the new Generic Key :" { sleep 5 ; send -s "saprasad@sonus@1\r" }
+
+#            timeout { send_user "Did not get pattern - Enter the new Generic Key\n" }
+
+#      }
+
+#expect {
+
+#            -re "Re-Enter the Generic Key :" { sleep 5 ; send -s "saprasad@sonus@1\r" }
+
+#            timeout { send_user "Did not get pattern - Re-Enter the Generic Key\n" }
+
+#      }
+
+expect {
+
+      timeout { send_user "PSX app install completed\n" }
+
+      -re "PSX Software installation was successful"
+
+      }
+
+set timeout 1200
+
+expect {
+
+      timeout { send_user "Login banner not found after install\n" }
+
+      -re "This system is restricted to authorized users only" 
+
+      }
+
+expect {
+
+      timeout { send_user "psx login not found\n" }
+
+      -re "psx login:" { send_user "Sending enter"; send -s "\r"; sleep 5 }
+
+      }
+
+set timeout 60
+
+expect {
+    
+      timeout { send_user "Login screen not found after install\n" }
+
+      -re "login:"  
+    
+      }
+
+
+send -s "root\r"
+
+sleep 5
+
+expect -re "Password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+expect -re "UNIX password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+expect -re "New password:"
+
+send -s "B3y.ad747\r"
+
+sleep 5
+
+expect -re "Retype new password:"
+
+send -s "B3y.ad747\r"
+
+sleep 5
+
+expect -re ".*#"
+
+send -s "passwd\r"
+
+sleep 5
+
+expect -re "New password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+expect -re "Retype new password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+expect -re "passwd: all authentication tokens updated successfully"
+
+send -s "sed -i \'s/PermitRootLogin no/PermitRootLogin yes/g\' /etc/ssh/sshd_config\r"
+
+sleep 5
+
+send -s "service sshd restart\r"
+
+expect -re ".*#"
+
+sleep 5
+
+send -s "ln -sf /usr/share/zoneinfo/Asia\/Kolkata /etc/localtime\r"
+
+expect -re ".*#"
+
+sleep 5
+
+send -s "sed -i \'s/ZONE=.*/ZONE=Asia\/Kolkata/g\' /etc/sysconfig/clock\r"
+
+sleep 5
+
+send -s "reboot\r"
+
+sleep 5
+
+set timeout 1200
+
+expect {
+
+      timeout { send_user "Login screen not found\n" }
+
+      -re "login"
+
+      }
+
+set timeout 60
+
+
+send -s "\033("
+
+sleep 5
+
+expect "</>hpiLO->"
+
+send -s "quit\r"
+
+sleep 5
+
+send_user "Exiting expect script\n"
+
+exit 1

@@ -1,0 +1,319 @@
+#!/ats/bin/perl
+
+use ATS;
+use Data::Dumper;
+use Getopt::Long;
+use SonusQA::Utils;
+
+use strict;
+use Data::UUID;
+use Log::Log4perl qw(get_logger :levels);
+
+########################
+# Variables
+########################
+`set +o history`;
+my ($testbed_definition_file, $test_suite_list_file,$debug,$quiet,$share,$obji, $usage, $help);
+my $failure_msg;  ## Used to add failure_reason as per TOOLS-8212, used as $main::failure_msg in different helper files,Ex: SIPP.pm,GBL.pm,TSHARK.pm,SBX5000.pm,SBX5000HELPER.pm
+my $core_found; #using to check consecutive coredump count
+my $asan_build_failure = 0; #using to check for failures in ASAN SBC Builds. #TOOLS-72075
+our $bistq_job_uuid; #we get it as command line argument for BISTQ launched. It uses in HARNESS for some BISTQ specific things
+our $junit; #TOOLS-73150: we get it as command line argument for jenkins run. It used in HARNESS for format the result xml for in either JUnit or CPPUnit.
+our $tma;
+# Testbed
+#
+our (
+    @TESTBED,
+    %TESTBED,
+    $TESTSUITE
+);
+########################
+# Help info
+########################
+
+my $usage_string = "    Usage: startAutomation -def <def file> -test <test file> [-debug]";
+
+my $help_string = q{
+    startAutomation - ATS automation tool
+
+}.$usage_string. q{
+
+    Options:
+         -def           Specify a testbed definition file (full path)
+         -tests         Specify the test suite list file to run
+         -debug         For a fuller ATS logging output
+         -quiet         Be less noisy on stdout (Make the *screen* appender filter for >=WARN, file/json logging is left untouched)
+
+        --help          Print this summary
+        --usage         Print the usage line
+
+};
+
+sub usage {
+    # Print this if user needs a little help...
+    die "$usage_string\n\n";
+}
+
+sub help {
+    # Print this if user needs a little more help...
+    die "$help_string";
+}
+
+sub handleControlC {
+    print "\nOh my God, you killed Kenny\n\n";
+    exit;
+}
+$SIG{INT} = \&handleControlC;
+
+########################
+# Read CMD LINE options
+########################
+
+GetOptions (
+    "junit"     => \$junit,
+    "tma"       => \$tma,
+    "bistq_job_uuid=s"     => \$bistq_job_uuid,
+    "def=s"     => \$testbed_definition_file,
+    "tests=s"   => \$test_suite_list_file,
+    "usage"     => \$usage,
+    "help"      => \$help,
+    "debug"     => \$debug,
+    "quiet"     => \$quiet,
+    "share"     => \$share,
+) or help;
+
+
+usage() if($usage);
+help() if($help);
+
+
+# Check for def file
+unless ( defined $testbed_definition_file ) {
+    # Error if not present
+    print "ERROR: def flag not present.\n";
+    help;
+}
+
+# Check for tests file
+unless ( defined $test_suite_list_file ) {
+    # Error if not present
+    print "ERROR: tests flag not present.\n";
+    help;
+}
+
+if ( defined $share ) {
+    print "SHARING of PSX done. PSX logs will be tailed";
+    $ENV{SHARE} = 1;
+}
+
+########################
+# Ensure user has
+# logging directory
+########################
+
+my (
+    $name,
+    $user_home_dir,
+);
+
+our $log_dir = SonusQA::Utils::createUserLogDir();
+die "Could not create user log directory" unless($log_dir);
+
+print "\n====: Logging to directory: $log_dir\n";
+
+########################
+# Start Logging
+########################
+
+# Create timestamp for automation run logs
+my ($sec,$min,$hour,$mday,$mon,$year,$wday, $yday,$isdst) = localtime(time);
+our $timestamp = sprintf "%4d%02d%02d-%02d%02d%02d", $year+1900,$mon+1,$mday,$hour,$min,$sec;
+
+# GSX type layout for log files
+my $gsx_layout;
+
+# If things are going wrong, use the debug flag (see Usage). This will enable
+# the printing of exactly which method/function is printing what and at what line.
+# As this should only be used when speed is not an issue, its an option.
+
+if ($debug) {
+    $gsx_layout = Log::Log4perl::Layout::PatternLayout->new(
+        "%d{MMddyyy HHmmss.SSS}.%-8p %32.33C{3} : %-32.32M{1}: %80F [%5L]: %m%n");
+}
+else {
+    $gsx_layout = Log::Log4perl::Layout::PatternLayout->new(
+        "%d{MMddyyy HHmmss.SSS}.%-8p %32.33C{3} : %m%n");
+}
+
+# Simplified layout for screen
+my $screen_layout = Log::Log4perl::Layout::PatternLayout->new(
+        "%d{MMddyyy HHmmss}: %m%n");
+
+
+#################################################
+# Logging is as follows:                        #
+#   Test case output    => test_run.<timestamp> #
+#   ATS lib output      => ATS_log.<timestamp>  #
+#################################################
+
+# Override default easy init logging for Base
+# connections
+
+my $ats_logger        = get_logger("SonusQA");
+my $test_case_logger  = get_logger("QATEST");
+my $sonus_logger      = get_logger("Sonus"); # Required to log output from Sonus::Utils (e.g. for log_result())
+
+# Stop drip of logs to root logger created by any easy_init
+# This controls how and what we send to the screen
+$ats_logger->additivity(0);
+$test_case_logger->additivity(0);
+
+# Create the ATS appender and point it to a log file
+$ENV{'ATS_LOG_FILE'} = $log_dir.'ATS_log.'.$timestamp;
+my $ats_file_appender = Log::Log4perl::Appender->new(
+        "Log::Log4perl::Appender::File",
+        filename => $ENV{'ATS_LOG_FILE'},
+        name => "AtsLog",
+);
+
+
+# Create the test case appender and point it to a log file
+$ENV{'TEST_LOG_FILE'} = $log_dir.'test_run.'.$timestamp;
+my $test_case_appender = Log::Log4perl::Appender->new(
+        "Log::Log4perl::Appender::File",
+        filename => $ENV{'TEST_LOG_FILE'},
+        name => "TestRunLog",
+);
+
+# Create a second test case appender and point it to the screen
+my $test_case_screen_appender = Log::Log4perl::Appender->new(
+        "Log::Dispatch::Screen",
+        name => "screen",
+);
+# JSON output suitable for feeding to kafka/logstash etc.
+# Get JobUUID from command line argument if defined (i.e. BISTQ launched) - else use generated one
+our $job_uuid = $bistq_job_uuid; # Defined outside because we want to log/print it - and we need to complete Log4p initialization first.
+unless($job_uuid){
+    my $ug = Data::UUID->new;
+    my $uuid = $ug->create();
+    $job_uuid = $ug->to_string( $uuid );
+}
+
+if ($ENV{ USER } eq "jenkinsbuild" or $ENV{ LOGSTASH } eq "y" ) { # Only enable this for jenkins triggered builds for now (and allow user-override)
+    my $jsonappender = Log::Log4perl::Appender->new("Log::Log4perl::Appender::File",
+        filename => "$log_dir/ATS_log.$timestamp.jsonlog");
+
+    Log::Log4perl::MDC->put('jobuuid', $job_uuid);
+
+    my $json_layout = SonusQA::Utils::initJsonLayout();
+    $jsonappender->layout($json_layout);
+
+    $ats_logger->add_appender($jsonappender);
+    $sonus_logger->add_appender($jsonappender);
+    $test_case_logger->add_appender($jsonappender);
+}
+
+# Add appenders to the appropriate logger
+$ats_logger->add_appender($ats_file_appender);
+$ats_logger->add_appender($test_case_screen_appender);
+$sonus_logger->add_appender($ats_file_appender);
+$sonus_logger->add_appender($test_case_screen_appender);
+$test_case_logger->add_appender($test_case_screen_appender);
+$test_case_logger->add_appender($test_case_appender);
+$test_case_logger->add_appender($ats_file_appender);     # for logging the Feature.pm file logs into ATS logs :: ie merging test_run logs to ATS logs .
+
+# Configure the appenders with the layout we've defined
+$ats_file_appender->layout($gsx_layout);
+$test_case_appender->layout($gsx_layout);
+$test_case_screen_appender->layout($screen_layout);
+
+# Set logging levels
+$ats_logger->level($DEBUG);
+$sonus_logger->level($DEBUG);
+$test_case_logger->level($DEBUG);
+$test_case_screen_appender->threshold($WARN) if ($quiet);
+
+$ats_logger->debug("Running with Job UUID : $job_uuid");
+
+###########################
+
+####### storing execution time for bangalore ats clients ##########
+#my @hostname = `hostname`;
+#chomp @hostname;
+#if ($hostname[0] =~ /(bats1|Belur|bats4|bats3|bats5|backupats|atsvm)/i) {
+$ENV{LOG_EXECUTION_TIME} = 1;
+#}
+
+$ENV{SEND_FAILURE_MAIL}=1;
+
+# Check for files
+
+if ( -e $testbed_definition_file ) {
+    unless ( my $return_val = do $testbed_definition_file ) {
+        $ats_logger->logdie("SonusQA::startAutomation - ERROR -> Couldn't parse def file \"$testbed_definition_file\": $@") if $@;
+        $ats_logger->logdie("SonusQA::startAutomation - ERROR -> Couldn't 'do' def file \"$testbed_definition_file\": $!") unless defined $return_val;
+        $ats_logger->logdie("SonusQA::startAutomation - ERROR -> Couldn't run def file \"$testbed_definition_file\": $!") unless $return_val;
+    }
+} else {
+    die "ERROR: Failed to find -def file \"$testbed_definition_file\"\n";
+}
+
+unless ( -e $test_suite_list_file ) {
+    die "ERROR: Failed to find -tests file \"$test_suite_list_file\"\n";
+}
+#
+###########################
+# Process testbed definition
+
+%TESTBED = SonusQA::ATSHELPER::resolveHashFromAliasArray( -input_array  => \@TESTBED );
+$ats_logger->debug("Resolved TESTBED Hash: ".Dumper(\%TESTBED));
+
+$ats_logger->debug("Validating JIRA credentials..");
+&SonusQA::Utils::verifyJiraCredentials;
+$ats_logger->debug("JIRA login verified. ");
+
+# Logging svn info
+# SonusQA::Utils::getSVNinfo();
+
+#
+###########################
+# Execute test script file
+$ats_logger->debug(" Starting compilation of testsuite.."); 
+
+unless ( my $return_val = do $test_suite_list_file ) {
+    $ats_logger->logdie("SonusQA::startAutomation - ERROR -> Couldn't parse test suite file \"$test_suite_list_file\": $@") if $@;
+    $ats_logger->logdie("SonusQA::startAutomation - ERROR -> Couldn't 'do' test suite file \"$test_suite_list_file\": $!\n") unless defined $return_val;
+    $ats_logger->logdie("SonusQA::startAutomation - ERROR -> Couldn't run test suite file \"$test_suite_list_file\": $!") unless $return_val;
+}
+
+#
+###########################
+# Let sessions close...
+sleep 1;
+##print "\n\nWhen the tests are all gone, its time to move on... arrivederci.\n\n";
+# Send mail if execution failure occurs before HARNESS object creation
+#TOOLS 19330
+END{
+    if($ENV{SEND_FAILURE_MAIL}){
+        my @emailList = (exists $TESTSUITE->{EMAIL_LIST}) ? @{$TESTSUITE->{EMAIL_LIST}} : ();
+        push(@emailList, @{$TESTSUITE->{iSMART_EMAIL_LIST}}) if(exists $TESTSUITE->{iSMART_EMAIL_LIST});
+        unless(@emailList){
+            $emailList[0]= qx#id -un#;
+            chomp($emailList[0]);
+            $emailList[0] .='@rbbn.com';
+        }
+        my $mail_add = join (';' , @emailList);
+        open(MAIL, "|/usr/sbin/sendmail -t");
+        print MAIL "To: $mail_add\n";
+        print MAIL "Subject: ATS Results : EXECUTION FAILURE\n";
+        print MAIL "Execution could not continue, ".( ($main::asan_build_failure)?"due to ASAN Build Failure":"there were some errors.")." Please check the logs.\n"; #TOOLS-72075
+        print MAIL "\nLogs are available in:";
+        print MAIL "\n$main::asan_build_failure" if (defined $main::asan_build_failure);
+        print MAIL " \n".$ENV{'ATS_LOG_FILE'}."\n".$ENV{'TEST_LOG_FILE'}."\n";
+        close(MAIL);
+        $ats_logger->debug("Email send successfuly to :$emailList[0]");
+    } 
+}
+
+
+

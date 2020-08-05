@@ -1,0 +1,268 @@
+#!/usr/bin/expect
+
+#exp_internal -f  expect.log 0
+set systemTime [clock seconds]
+set time [clock format $systemTime -format %a_%b_%d_%Y_%H_%M_%S]
+append newfile "~/ats_user/logs/v3700StandbyInstall_11_1_${time}.log"
+
+log_file -noappend "$newfile";
+
+set send_slow {1 0.02}
+
+set standbyip [lindex $argv 0]
+set standbyIlomIp [lindex $argv 1]
+
+set timeout 20
+
+spawn bash -c "ssh-keygen -f ~/.ssh/known_hosts -R $standbyip"
+
+spawn bash -c "scp  -o StrictHostKeyChecking=no ~/ats_repos/lib/perl/SonusQA/PSX/ExpectScripts/V1101/INSTALL/haconfig_v3700 root@$standbyip:/export/home/ssuser/SOFTSWITCH/BIN"
+
+expect -re ".*password:"
+send -s "sonus\r"
+
+sleep 10
+
+spawn ssh -o ServerAliveInterval=60  -o StrictHostKeyChecking=no Administrator@$standbyIlomIp;
+
+expect -re ".*password:"
+send -s "Sonus!@#\r"
+
+sleep 5
+
+expect "</>hpiLO->"
+
+sleep 5
+
+send -s "textcons\r"
+
+sleep 5
+
+expect {
+
+    timeout { send_user "textcons not launched\n"; exit 0 }
+
+    -re ".*Press.*Esc.*to return to the CLI Session"
+
+    }
+
+expect {
+
+      timeout { send_user "Login screen not found\n"; send -s "exit\r"; exp_continue }
+
+      -re "login:"
+
+      }
+
+set timeout 10
+
+send -s "root\r"
+
+sleep 5
+
+expect -re ".*Password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+sleep 5
+
+
+send -s "cd /export/home/ssuser/SOFTSWITCH/BIN\r"
+
+expect  -re ".*]#"
+
+sleep 10
+
+set timeout 1800
+
+send -s "./configureHA.pl -inputfile haconfig_v3700\r"
+
+sleep 10
+
+expect {
+
+     timeout { send_user "Pattern not found - Please enter to continue,number to change prompt value,0 to exit\n"; exit 0 }
+
+	-re "Please enter to continue,number to change prompt value,0 to exit:.*"  { sleep 10; send -s "\r\n" }
+        
+    }
+
+sleep 10
+
+expect {
+
+    timeout { send_user "Pattern not found - eth7 Configured sucessfully\n"; exit 0 }
+
+    -re "eth7 Configured sucessfully"
+
+     }
+
+sleep 10
+
+expect {
+
+        timeout { send_user "Pattern not found - SONSraidInstall called with 4 arguments\n"; exit 0 }
+
+        -re "SONSraidInstall called with 4 arguments"
+
+       }
+
+
+sleep 10
+
+
+expect {
+
+    timeout { send_user "Pattern not found - Mapping the volumes on the Standby Host\n"; exit 0 }
+
+    -re "Mapping the volumes on the Standby Host"
+
+      }
+
+
+sleep 10
+
+expect {
+
+    timeout { send_user "Pattern not found - Creating host\n"; exit 0 }
+
+    -re "Creating host"
+
+      }
+
+sleep 10
+
+
+expect {
+
+    timeout { send_user "Pattern not found - Creating host\n"; exit 0 }
+
+    -re "WWPNs assigned"
+
+      }
+
+sleep 10
+
+expect {
+
+        timeout { send_user "Pattern not found - Rebooting system\n"; exit 0 }
+
+        -re "Rebooting"
+
+      }
+
+sleep 10
+
+set timeout 1800
+
+expect {
+
+        timeout { send_user "configureHA input prompt not found for second time \n"; exit 0 }
+
+        -re "Please enter to continue,number to change prompt value,0 to exit"  { sleep 10; send -s "\r\n" }
+
+       }
+
+
+set accounts [list ssuser oracle root admin ]
+
+array set passwords {ssuser ssuser oracle oracle root sonus admin admin}
+
+foreach accnt $accounts {
+
+    expect {
+
+        timeout { send_user "Did not get pattern - Enter new password for $accnt\n" ; exit 0 }
+
+      -timeout 3600  "Enter new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r"; send_user "NEW PASSWORD ENTERED FOR $accnt is $passwords($accnt)\n" }
+
+      }
+
+    sleep 10
+
+    expect {
+
+       timeout { send_user "Did not get pattern - Re-type new password for $accnt\n" ; exit 0 }
+
+      "Re-type new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r" ;  send_user "NEW PASSWORD RE-ENTERED FOR $accnt is $passwords($accnt)\n"  }
+
+        }
+
+    sleep 10
+
+    expect {
+
+        timeout { send_user "Did not get pattern - Please confirm the above input\n" ; exit 0 }
+
+         -re "Please confirm the above input.*" { sleep 10; send   -s "y\r" ;  send_user "CONFIRMED INPUT FOR FOR $accnt\n" }
+
+        }
+
+    sleep 10
+
+    expect  {
+
+        timeout { send_user "Did not get pattern - Password for $accnt changed successfully\n" ; exit 0 }
+
+         -re "Password for $accnt changed successfully" { sleep 5; send_user "PASSWORD SUCCESSFULLY CHANGED FOR $accnt\n" }
+
+        }
+
+    sleep 10
+
+
+}
+
+set timeout 3600
+
+
+expect {
+
+            -re "Do you want to change the Generic key" { sleep 5 ; send  -s "N\r" }
+
+            timeout { send_user "Did not get pattern - Do you want to change the Generic key\n" }
+
+      }
+
+
+expect {
+
+      timeout { send_user "Login screen not found\n" }
+
+      -re "login:"
+
+      }
+
+set timeout 10
+
+send -s "root\r"
+
+sleep 5
+
+expect -re ".*Password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "tail -f /export/home/ssuser/SOFTSWITCH/BIN/configureHA.pl.logstandby\r"
+
+sleep 600
+
+expect {
+
+     timeout { send_user "Pattern not found - HA configuration for standby completed\n";sleep 10;send -s "\x03"; exit 0 }
+
+    -re ".*HA configuration for standby completed.*" {sleep 10;send -s "\x03"}
+
+
+      }
+
+
+exit 1

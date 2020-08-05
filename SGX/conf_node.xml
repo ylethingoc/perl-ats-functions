@@ -1,0 +1,84 @@
+
+<ConfigureNodes>
+  <set confset="a7 a7">
+    <desc>
+      This set contains the list of parameters needed for configuring node with a7 protocol.
+    </desc>
+		<paramset>
+    	<param ca7="y"></param>
+    	<param a7iu="y"></param>
+		</paramset>
+  </set>
+  <set confset="c7 c7">
+    <desc>
+      This set contains the list of parameters needed for configuring node with c7 protocol.
+    </desc>
+		<paramset>
+	<param c7tu="n"></param>
+        <param c7iu="y"></param>
+        <param c7ip="y"></param>
+        <param ac7="y"></param>
+                </paramset>
+  </set>   
+  <set confset="j7 j7">
+    <desc>
+      This set contains the list of parameters needed for configuring node with j7 protocol.
+    </desc>
+                <paramset>
+        <param j7iu="y"></param>
+        <param extra=""></param>
+                </paramset>
+  </set> 
+  <set confset="ch7 ch7">
+    <desc>
+      This set contains the list of parameters needed for configuring node with ch7 protocol.
+    </desc>
+                <paramset>
+        <param chtu="n"></param>
+        <param chiu="y"></param>
+        <param ach7="y"></param>
+                </paramset>
+  </set>
+  <set confset="a7m3ua a7m3uasg">
+    <desc>
+      This set contains the list of parameters needed for configuring node with a7m3uasg protocol.
+    </desc>
+                <paramset>
+        <param a7sccp="y"></param>
+        <param a7iu="y"></param>
+                </paramset>
+  </set>
+  <set confset="c7m3ua c7m3uasg">
+    <desc>
+      This set contains the list of parameters needed for configuring node with c7m3uasgJ protocol.
+    </desc>
+                <paramset>
+        <param c7sccp="y"></param>
+        <param c7tu="n"></param>
+        <param c7iu="y"></param>
+        <param c7ip="y"></param>
+                </paramset>
+  </set>
+  <set confset="j7m3ua j7m3uasg">
+    <desc>
+      This set contains the list of parameters needed for configuring node with j7m3uasg protocol.
+    </desc>
+                <paramset>
+        <param j7sccp="y"></param>
+        <param j7iu="y"></param>
+                </paramset>
+  </set>
+  <set confset="ch7m3ua ch7m3uasg">
+    <desc>
+      This set contains the list of parameters needed for configuring node with ch7m3uasg protocol.
+    </desc>
+                <paramset>
+        <param ch7sccp="y"></param>
+        <param chtu="n"></param>
+        <param chiu="y"></param>
+        <param ach7="y"></param>
+                </paramset>
+  </set>
+
+</ConfigureNodes>
+

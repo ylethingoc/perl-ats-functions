@@ -1,0 +1,183 @@
+#!/ats/bin/perl -w
+
+use ATS;
+use Data::Dumper;
+use SonusQA::SGX4000;
+use SonusQA::ATSHELPER;
+use Getopt::Long; 
+
+use Log::Log4perl qw(get_logger :levels);
+
+########################
+# Variables
+########################
+
+my ($testbed_definition_file, $test_suite_list_file);
+
+# Testbed 
+#
+our (
+    @TESTBED,
+    %TESTBED,
+);
+
+########################
+# Start Logging
+########################
+
+# GSX type layout for logger
+my $gsx_layout = Log::Log4perl::Layout::PatternLayout->new(
+        "%d{MMddyyy HHmmss.SSS}.%-8p %-16.16C{2}: %m%n");
+
+# Override default easy init logging for Base 
+# connections
+
+#my $sonusqa_sgx_logger = get_logger("SonusQA::Base");
+my $sonusqa_logger = get_logger("SonusQA");
+my $sonusqa_base_logger = get_logger("SonusQA::Base");
+my $qatest_logger = get_logger("QATEST");
+my $sonus_logger = get_logger("Sonus::Utils");
+
+# Create our new appender and point it to a log file
+my $appender = Log::Log4perl::Appender->new(
+        "Log::Dispatch::File",
+        filename => "SonusQA-All.log",
+#        filename => "SonusQA-Base.log",
+);
+
+# Create our new appender and point it to a log file
+my $base_appender = Log::Log4perl::Appender->new(
+        "Log::Dispatch::File",
+        filename => "SonusQA-Base.log",
+);
+
+# Create our new appender and point it to a log file
+my $test_appender = Log::Log4perl::Appender->new(
+        "Log::Dispatch::File",
+        filename => "test_run.log",
+);
+
+# Add appender and stop the drip to the root logger
+$sonusqa_logger->add_appender($appender);
+$sonusqa_base_logger->add_appender($base_appender);
+$sonus_logger->add_appender($appender);
+$qatest_logger->add_appender($test_appender);
+$sonusqa_logger->additivity(0);
+$sonusqa_base_logger->additivity(0);
+$appender->layout($gsx_layout);
+$test_appender->layout($gsx_layout);
+$base_appender->layout($gsx_layout);
+
+my $root_logger = get_logger();
+
+my $root_file_appender = Log::Log4perl::Appender->new(
+        "Log::Dispatch::File",
+        filename    => "all.log",
+);
+
+$root_file_appender->layout($gsx_layout);
+
+$root_logger->add_appender($root_file_appender);
+
+# Levels
+$sonusqa_logger->level($DEBUG);
+$sonusqa_base_logger->level($DEBUG);
+$qatest_logger->level($DEBUG);
+#$qatest_logger->level($INFO);
+$sonus_logger->level($DEBUG);
+$root_logger->level($DEBUG);
+
+########################
+# Help info
+########################
+
+my $usage_string = "    Usage: startAutomation -def <def file> -test <test file>";
+
+my $help_string = q{
+    startAutomation - SGX4000 automation tool
+
+}.$usage_string. q{
+
+    Options:
+         -def           Specify a testbed definition file (full path)
+         -tests         Specify the test suite list file to run
+
+        --help          Print this summary
+        --usage         Print the usage line 
+
+};
+
+sub usage {
+    # Print this if user needs a little help...
+    die "$usage_string\n\n";
+}
+
+sub help {
+    # Print this if user needs a little more help...
+    die "$help_string";
+}
+
+sub handleControlC {
+    print "\nOh my God, you killed Kenny\n\n";
+    exit;
+}
+$SIG{INT} = \&handleControlC;
+
+########################
+# Read CMD LINE options
+########################
+
+GetOptions (
+    "def=s"     => \$testbed_definition_file,
+    "tests=s"   => \$test_suite_list_file,
+    "usage"     => \&usage,
+    "help"      => \&help,
+) or help; 
+
+# Check for def file
+unless ( defined $testbed_definition_file ) {
+    # Error if not present
+    print "ERROR: def flag not present.\n";
+    help;
+}
+
+###########################
+# Check for files
+unless ( defined $test_suite_list_file ) {
+    # Error if not present
+    print "ERROR: tests flag not present.\n";
+    help;
+}
+
+if ( -e $testbed_definition_file ) {
+    unless ( my $return_val = do $testbed_definition_file ) {
+        die "ERROR: Couldn't parse def file \"$testbed_definition_file\": $@\n" if $@;
+        die "ERROR: Couldn't 'do' def file \"$testbed_definition_file\": $!\n" unless defined $return_val;
+        die "ERROR: Couldn't run def file \"$testbed_definition_file\": $!\n" unless $return_val;
+    }
+} else {
+    die "ERROR: Failed to find -def file \"$testbed_definition_file\"\n";
+}
+
+unless ( -e $test_suite_list_file ) {
+    die "ERROR: Failed to find -tests file \"$test_suite_list_file\"\n";
+}
+#
+###########################
+# Process testbed definition
+
+%TESTBED = SonusQA::ATSHELPER::resolveHashFromAliasArray( -input_array  => \@TESTBED );
+
+#
+###########################
+# Execute test script file
+
+unless ( my $return_val = do $test_suite_list_file ) {
+    die "ERROR: Couldn't parse test suite file \"$test_suite_list_file\": $@\n" if $@;
+    die "ERROR: Couldn't 'do' test suite file \"$test_suite_list_file\": $!\n" unless defined $return_val;
+    die "ERROR: Couldn't run test suite file \"$test_suite_list_file\": $!\n" unless $return_val;
+}
+
+#
+###########################
+print "\n\n### FINISHED EXECUTION ###\n\n"; 

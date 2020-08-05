@@ -1,0 +1,84 @@
+# Active host name
+active="psxsvtg81"
+# Standby host name
+standby="psxsvtg82"
+# IP type that can be used valid values are BOTH, IP_VERSION4,IP_VERSION6
+inet_type=IP_VERSION4
+#Well known host name in where all slave can connect using this host
+well_known_host_name="SANHA"
+#Well known host name IP in where all slave can connect using this host
+well_known_ip=10.54.48.243
+well_known_ip_gw=10.54.48.1
+well_known_ip_netmask=255.255.254.0
+#LUN ip of storage array
+storage_array_ip=10.54.225.203
+#Local Ip address of SAN's connectivity interface
+storage_array_interface_ip=10.54.225.119
+storage_array_interface_gw_ip=10.54.225.1
+storage_array_interface_netmask=255.255.255.0
+#PSX Master provision only flag Y - Provisioning only
+provisioning_only=Y
+#PSX Master test data access enabled flag Y - TDA Enabled
+tda_enabled=N
+# Hostanme in [] all following parameter are applied to this host
+[psxsvtg81]
+# interface name used for well known ip
+well_known_ip_interface=bond0
+# Primary interface to resolve the host name locally
+primary_interface=eth1
+# Secondary interface to resolve the host name locally , if primary fails
+secondary_interface=eth4
+# Primary IP to resolve the host name locally
+primary_ip=
+# Secondary IP to resolve the host name locally , if primary fails
+secondary_ip=
+# Management IP of the host
+reachability_ip=10.54.48.197
+#Primary interface for the data network
+primary_dataNetwork_interface=eth3
+#Secondry Interface for data network
+secondry_dataNetwork_interface=eth7
+# Management IPV6 of the host
+reachability_ipv6=
+# Keey alve interface 1
+keep_alive_interface_1=eth2
+# Keey alive interface 2
+keep_alive_interface_2=eth5
+# Keey alive IP 1
+keep_alive_ip_1=192.168.1.1
+# Keey alive IP 2
+keep_alive_ip_2=192.168.2.1
+#local interface to be used for storage array SAN's connectivity
+storage_array_interface=bond1
+[psxsvtg82]
+# interface name used for well known ip
+well_known_ip_interface=bond0
+# Primary interface to resolve the host name locally
+primary_interface=eth1
+# Secondary interface to resolve the host name locally , if primary fails
+secondary_interface=eth4
+# Primary IP to resolve the host name locally
+primary_ip=
+# Secondary IP to resolve the host name locally , if primary fails
+secondary_ip=
+# management IP of the standby host
+reachability_ip=10.54.48.242
+#Primary interface for the data network
+primary_dataNetwork_interface=eth3
+#Secondry Interface for data network
+secondry_dataNetwork_interface=eth7
+# management IPV6 of the host
+reachability_ipv6=
+# Keey alve interface 1
+keep_alive_interface_1=eth2
+# Keey alive interface 2
+keep_alive_interface_2=eth5
+# Keey alive IP 1
+keep_alive_ip_1=192.168.1.2
+# Keey alive IP 2
+keep_alive_ip_2=192.168.2.2
+#local interface to be used for storage array SAN's connectivity
+storage_array_interface=bond1
+well_known_ipv6=""
+raid_name=""
+well_known_mask=""

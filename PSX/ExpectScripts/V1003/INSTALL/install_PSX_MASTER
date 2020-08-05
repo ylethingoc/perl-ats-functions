@@ -1,0 +1,101 @@
+#!/usr/bin/expect
+
+#exp_internal -f  expect.log 0
+set systemTime [clock seconds]
+set time [clock format $systemTime -format %a_%b_%d_%Y_%H_%M_%S]
+append newfile "~/ats_repos/lib/perl/SonusQA/PSX/Logs/psxMasterInstall_10_03_${time}.log"
+
+log_file -noappend "$newfile";
+
+set send_slow {1 0.02}
+
+set masterip [lindex $argv 0]
+
+
+set timeout 20 
+
+spawn bash -c "ssh-keygen -f ~/.ssh/known_hosts -R $masterip"
+#spawn bash -c "ssh-keygen -R $masterip" 
+
+sleep 10
+
+spawn ssh -o ServerAliveInterval=60  -o StrictHostKeyChecking=no ssuser@$masterip;
+
+expect -re ".*password:"
+send -s "ssuser\r"
+
+sleep 5
+
+expect -re ".*password for ssuser:"
+send -s "ssuser\r"
+
+set timeout 300
+
+expect {
+     -re "Do you want to change the password for ssuser.*" { sleep 5; send -s "n\r"}
+     timeout { send_user "Did not find input - Do you want to change the password for ssuser\n"; exit 0 }
+       }
+
+expect {
+    -re "Do you want to change the password for oracle.*" { sleep 5; send -s "n\r" ; sleep 5}
+    timeout { send_user "Did not find input - Do you want to change the password for oracle\n"; exit 0 }
+       }
+
+expect {
+    -re "Do you want to change the password for root.*" { sleep 5; send -s "n\r"; sleep 5 }
+    timeout { send_user "Did not find input - Do you want to change the password for root\n"; exit 0 }
+       }
+
+expect {
+    -re "Do you want to change the password for admin.*" { sleep 5; send -s "n\r"; sleep 5 }
+    timeout { send_user "Did not find input - Do you want to change the password for admin\n"; exit 0 }
+       }
+
+expect {
+    -re "Is this PSX a master or slave.*"  { sleep 5; send -s "M\r"; sleep 5 }
+    timeout { send_user "Did not find input - Is this PSX a master or slave \n"; exit 0 }
+      }
+
+expect {
+    -re "Is this PSX a provisioning only master.*"  { sleep 5; send -s "n\r"; sleep 5 } 
+    timeout { send_user "Did not find input - Is this PSX a provisioning only master\n"; exit 0 }
+      }
+
+expect {
+        -re "Enable PSX Test Data Access on this PSX.*" { sleep 5; send -s "n\r"; sleep 5 } 
+        timeout { send_user "Did not find input - Enable PSX Test Data Access on this PSX\n"; exit 0 }
+      }
+
+set timeout 3600
+
+expect { 
+    -re "Master.*or.*Slave.*database.*M" {sleep 5}
+    timeout { send_user "pattern failed\n"; exit 0}
+        }
+
+sleep 10
+    
+expect {
+
+        -re "Please confirm values.*" { sleep 5; send -s "Y\r"; }
+
+        timeout { send_user "Did not find input - Please confirm values\n"; exit 0}
+
+      }
+
+sleep 10
+
+expect {
+
+      timeout { send_user "Master installation taking more than 20 mins. Please check manually\n"; exit 0 }
+           
+     -re ".*is setup as a Master." 
+
+      }
+
+
+#start softswitch
+
+
+
+exit 1

@@ -1,0 +1,80 @@
+#!/usr/bin/expect
+
+exp_internal 0
+
+set send_slow {1 0.02};
+#to avoid delay. This is the average speed for input to be provided to the box
+
+set path [lindex $argv 0];
+set hostname [lindex $argv 1];
+set delay [lindex $argv 2];
+
+if {[llength $argv] == 0} {
+  send_user "\nIncorrect option selected... Aborting Script\n"
+  exit 1
+}
+
+log_file -noappend $path;
+send_user "$hostname";
+
+spawn ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=5  -o StrictHostKeyChecking=no root@$hostname
+expect "password"
+send "shipped!!\r"
+expect ":~ #"
+send "date\r"
+expect ":~ #"
+send "pwd\r"
+expect ":~ #"
+send "source ~/.bashrc\r"
+sleep 1
+expect ":~ #"
+send "qsbcversion=`gis -v | grep Server | awk -F \",\" '{print \$1}' | awk -F \" v\" '{print \$2}'`\r"
+expect {
+  "gis: command not found" {
+	send_user "\n\nBuild could not be found. Please have a check manually... Aborting Script\n"
+	exit 0
+  }
+  ":~ #" {
+	send "echo \$qsbcversion \r"
+  }
+}
+send "cd /var/builds/patch_\$qsbcversion\r"
+expect ":/var/builds/patch_\$qsbcversion"
+send "./setup\r"
+expect "Select choice by number or type q to quit:"
+send "2 \r"
+expect "you want to uninstall iServer version"
+send "\r"
+expect " you want to backup the iServer database"
+send "\r"
+expect "Enter full pathname of backup database"
+send "\r"
+expect "Value entered: "
+send "\r"
+expect "Do you want to backup the iServer configuration files"
+send "\r"
+expect "Enter full pathname of the directory to copy the backup files "
+send "\r"
+expect "Value entered: "
+send "\r"
+expect "Do you want to backup the iServer license file"
+send "\r"
+expect "Enter full pathname for license file"
+send "\r"
+expect "Value entered:"
+send "\r"
+sleep 45
+expect {
+
+    -re "Select choice by number or type q to quit:" { send "\r" }
+
+    timeout { sleep 40; send "\r" }
+}
+expect "Select choice by number or type q to quit:"
+send "q\r"
+expect "/var/builds/patch_"
+send "date\r"
+expect "/var/builds/patch_"
+sleep 10
+close
+

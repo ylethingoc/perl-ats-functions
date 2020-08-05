@@ -1,0 +1,63 @@
+#!/usr/bin/expect
+exp_internal 0
+
+set send_slow {1 0.02}; 
+#to avoid delay. This is the average speed for input to be provided to the box
+set path [lindex $argv 0];
+set hostip [lindex $argv 1];
+set patchpath [lindex $argv 2];
+set reuselicense [lindex $argv 3];
+set sleeptime [lindex $argv 4];
+
+if {[llength $argv] == 0} {
+  send_user "\nIncorrect option selected... Aborting Script\n"
+  exit 1
+}
+
+#log_file -noappend autoupgrade_$hostip\_dump.log;
+log_file -noappend $path;
+send_user "$hostip $patchpath"
+
+spawn ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=5  -o StrictHostKeyChecking=no root@$hostip
+
+expect "password"
+send "shipped!!\r"
+expect ":~ #"
+send "date\r"
+expect ":~ #"
+send "pwd\r"
+expect ":~ #"
+send "source ~/.bashrc\r"
+sleep 1
+expect ":~ #"
+send "cd $patchpath\r"
+expect "$patchpath"
+send "./setup\r"
+expect "Select choice by number or type q to quit:"
+send "3 \r"
+sleep 5
+send " "
+expect "Do you agree to the above license terms"
+send "y\r"
+expect "Are you sure you want to upgrade to iServer version"
+send "y\r"
+expect "Do you want to reuse the existing License File ?"
+send "$reuselicense\r"
+sleep $sleeptime 
+expect "Do you want to remove the previous install directory"
+send "n\r"
+sleep 25 
+send "\r"
+expect "Select choice by number or type q to quit:"
+send "q\r"
+sleep 20
+send "\r"
+sleep 25
+send "q\r"
+sleep 25
+send "\r"
+expect ":/var/builds/patch_"
+send "date\r"
+expect ":/var/builds/patch_"
+sleep 10
+close

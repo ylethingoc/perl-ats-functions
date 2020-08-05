@@ -1,0 +1,108 @@
+#!/ats/bin/perl -w
+
+use SonusQA::GSX::ART;
+use Getopt::Long;
+
+package SonusQA::GSX::ART; # We want all our globals in this namespace, and prefixing them is such a readability nightmare.
+
+
+sub printHelp {
+
+    print "Usage: runart [-h|-help] -cfg </path/to/art config filename>\n";
+    print "\t-cfg - Fully qualified path to art tool config file\n";
+    print "\t-h | -help - Display this text\n";
+    exit -1;
+}
+
+GetOptions ("cfg=s" => \$artcfg->{FILENAME},
+            "h|help" => \&printHelp
+          ) or printHelp;
+
+unless ( defined($artcfg->{FILENAME}) ) {
+        print "ERROR: runart: Please specify a config file\n\n";
+        printHelp;
+}
+
+
+if ( -e $artcfg->{FILENAME} ) {
+    unless (my $return_val = do $artcfg->{FILENAME}) {
+        print "ERROR: runart: Couldn't parse cfg file \"$artcfg->{FILENAME}\": $@\n" if $@;
+        print "ERROR: runart: Couldn't 'do' cfg file \"$artcfg->{FILENAME}\": $!\n" unless defined $return_val;
+        print "ERROR: runart: Couldn't run cfg file \"$artcfg->{FILENAME}\": $!\n" unless $return_val;
+        exit -1;
+    }
+} else {
+    print "ERROR: runart: Failed to find -cfg file \"$artcfg->{FILENAME}\"\n";
+    exit -1;
+}
+
+# Associate signal-handler
+$SIG{INT} = \&handleControlC;
+
+validateToolCfgVars();
+ 
+# NOTE: We should now have a logger at the appropriate debug level to log all subsequent issues.
+# We now need to get it.
+
+my $logger = Log::Log4perl->get_logger(__PACKAGE__ . ".main");
+
+
+my $sub_name = "runart (script)";
+
+# Check if regional defaults file defined - if it exists, then execute it (Design step 5.)
+if($artcfg->{REGIONAL_FILE}) {
+    if ( -e $artcfg->{REGIONAL_FILE} ) {
+        unless (my $return_val = do $artcfg->{REGIONAL_FILE}) {
+            $logger->error(__PACKAGE__ . ".$sub_name Couldn't parse regional configuration file \"$artcfg->{REGIONAL_FILE}\": $@") if $@;
+            $logger->error(__PACKAGE__ . ".$sub_name Couldn't 'do' regional configuration file \"$artcfg->{REGIONAL_FILE}\": $!") unless defined $return_val ;
+            $logger->error(__PACKAGE__ . ".$sub_name Couldn't run regional configuration file \"$artcfg->{REGIONAL_FILE}\": $!") unless $return_val ;
+
+            $logger->debug(__PACKAGE__ . ".$sub_name exit -1");
+            exit -1;
+        }
+        $logger->info(__PACKAGE__ . ".$sub_name Regional config file successfully applied");
+    } else {
+        $logger->error(__PACKAGE__ . ".$sub_name Failed to find regional configuration file \"$artcfg->{REGIONAL_FILE}\"");
+        $logger->debug(__PACKAGE__ . ".$sub_name exit -1");
+        exit -1;
+    }
+} else {
+	$logger->info(__PACKAGE__ . ".$sub_name No regional config file specified.");
+}
+
+# Create ATS Objects (Design step 6.) Function will exit (-1) on failure.
+createArtObjects();
+
+# Copy GSX images (Design step 7.)
+unless (copyGsxImagesAlloc($artcfg->{SRC_GSX_IMG_DIR},$artobj->{GSX})) {
+    $logger->error(__PACKAGE__ . ".$sub_name Failed to copy GSX images. Exiting");
+    $logger->debug(__PACKAGE__ . ".$sub_name exit -1");
+    exit -1;
+}
+
+# Set the reset node flag for each GSX (Design step 8.)
+foreach (@{$artobj->{GSX}}) {
+    $_->{RESET_NODE} = 1; 
+    $logger->info(__PACKAGE__ . ".$sub_name Setting RESET_NODE flag for GSX $_->{TMS_ALIAS_DATA}->{NODE}->{1}->{NAME}");
+}
+
+# Time for the big kahoona-burger.
+runArt();
+
+# All our automation is done now - we're supposed to print and e-mail a link to the results according to the design.
+
+$logger->info(__PACKAGE__ . ".$sub_name Test Results can be found in TMS - and in the results file - the name of which was printed some hours ago to this log ;-)");
+
+# TODO Send E-mail.
+
+$logger->warn(__PACKAGE__ . ".$sub_name Update runart script to send e-mail here - once the content of the e-mail is defined");
+
+
+
+
+            
+
+
+
+
+

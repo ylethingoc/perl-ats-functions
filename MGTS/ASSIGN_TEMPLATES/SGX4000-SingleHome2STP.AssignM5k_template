@@ -1,0 +1,472 @@
+<?xml version="1.0"?>
+<rootBeer AppVersion="MGTS Common Core 13.1 11/11/04" fileVersion="1.2">
+  <interShelfComm exists="false" ipAddress="xx.xx.xx.0 " />
+  <assignFile>
+    <assign tab="IP" limType="ETHERNET" transport="SCTP" panelID="1" nodeType="IP">
+      <primary>
+        <display>#+#MGTS_SIG_NIF_1#+#</display>
+        <pasmID>1</pasmID>
+      </primary>
+      <adjacent>
+        <display>#+#SGX_CE0_EXT_SIG_NIF_1#+#</display>
+        <pasmID>3</pasmID>
+      </adjacent>
+      <linkset idNumber="5">
+        <port1.1>
+          <slotNum>#+#MGTS_SLOT_NUM#+#</slotNum>
+          <port>1</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>#+#MGTS_SIG_NIF_NETMASK#+#</networkMask>
+          <networkAddress>#+#MGTS_SIG_NIF_NETADDR#+#</networkAddress>
+          <ip_address>#+#MGTS_SIG_NIF_1#+#</ip_address>
+          <broadcast_mask>#+#MGTS_SIG_NIF_BROADCAST#+#</broadcast_mask>
+          <subnet_mask>#+#MGTS_SIG_NIF_SUBNET_MASK#+#</subnet_mask>
+          <assoc>
+            <assoc>500</assoc>
+            <layer>M3UA</layer>
+            <slc>0</slc>
+            <client_server>0</client_server>
+            <localIP>#+#MGTS_SIG_NIF_1#+#</localIP>
+            <localPort>#+#EXT_REMOTE_PORT#+#</localPort>
+            <remoteIP>#+#SGX_CE0_EXT_SIG_NIF_1#+#</remoteIP>
+            <remotePort>#+#EXT_LOCAL_PORT#+#</remotePort>
+            <streamCount>#+#MGTS_SIG_NIF_1_STREAMS#+#</streamCount>
+            <receiveWindow>32768</receiveWindow>
+            <bundling>1</bundling>
+            <bundlingCount>255</bundlingCount>
+            <bundlingTimer>200</bundlingTimer>
+          </assoc>
+        </port1.1>
+        <board boardCPU="1" boardType="PPCI">5</board>
+      </linkset>
+    </assign>
+    <assign tab="IP" limType="ETHERNET" transport="SCTP" panelID="2" nodeType="IP">
+      <primary>
+        <display>#+#MGTS_SIG_NIF_2#+#</display>
+        <pasmID>2</pasmID>
+      </primary>
+      <adjacent>
+        <display>#+#SGX_CE1_EXT_SIG_NIF_2#+#</display>
+        <pasmID>4</pasmID>
+      </adjacent>
+      <linkset idNumber="6">
+        <port1.2>
+          <slotNum>#+#MGTS_SLOT_NUM#+#</slotNum>
+          <port>2</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.2.0</networkAddress>
+          <ip_address>#+#MGTS_SIG_NIF_2#+#</ip_address>
+          <broadcast_mask>10.33.2.255</broadcast_mask>
+          <subnet_mask>ffffff00</subnet_mask>
+          <assoc>
+            <assoc>550</assoc>
+            <layer>M3UA</layer>
+            <slc>0</slc>
+            <client_server>0</client_server>
+            <localIP>10.33.2.5</localIP>
+            <localPort>#+#EXT_REMOTE_PORT#+#</localPort>
+            <remoteIP>#+#SGX_CE1_EXT_SIG_NIF_2#+#</remoteIP>
+            <remotePort>#+#EXT_LOCAL_PORT#+#</remotePort>
+            <streamCount>17</streamCount>
+            <receiveWindow>32768</receiveWindow>
+            <bundling>1</bundling>
+            <bundlingCount>255</bundlingCount>
+            <bundlingTimer>200</bundlingTimer>
+          </assoc>
+        </port1.2>
+        <board boardCPU="1" boardType="PPCI">5</board>
+      </linkset>
+    </assign>
+  </assignFile>
+  <networkFile name="SGX4000-mgts5-HeckleJeckle.Network" path="/home/mgtsuser25/datafiles/SGX4000-mgts5-HeckleJeckle.Network" lastModifyDate="1241604756000">
+    <IP assigned="true" idNumber="1">
+      <iconPosition X="75" Y="50" />
+      <color>0</color>
+      <IP_Address>10.33.1.5</IP_Address>
+      <Ip_Sctp>1</Ip_Sctp>
+      <SSP_mode>PASM</SSP_mode>
+      <id>1</id>
+      <name>STP1</name>
+      <systemType>Simulated</systemType>
+      <Layer2>MTP2</Layer2>
+      <TFOEnabled>0</TFOEnabled>
+    </IP>
+    <IP assigned="true" idNumber="2">
+      <iconPosition X="75" Y="175" />
+      <color>0</color>
+      <IP_Address>10.33.2.5</IP_Address>
+      <Ip_Sctp>1</Ip_Sctp>
+      <SSP_mode>PASM</SSP_mode>
+      <id>2</id>
+      <name>STP2</name>
+      <systemType>Simulated</systemType>
+      <Layer2>MTP2</Layer2>
+      <TFOEnabled>0</TFOEnabled>
+    </IP>
+    <IP assigned="false" idNumber="3">
+      <iconPosition X="225" Y="50" />
+      <color>0</color>
+      <IP_Address>10.33.1.120</IP_Address>
+      <Ip_Sctp>1</Ip_Sctp>
+      <SSP_mode>PASM</SSP_mode>
+      <id>3</id>
+      <name>CE0</name>
+      <systemType>External</systemType>
+      <Layer2>MTP2</Layer2>
+      <TFOEnabled>0</TFOEnabled>
+    </IP>
+    <IP assigned="false" idNumber="4">
+      <iconPosition X="225" Y="175" />
+      <color>0</color>
+      <IP_Address>10.33.2.121</IP_Address>
+      <Ip_Sctp>1</Ip_Sctp>
+      <SSP_mode>PASM</SSP_mode>
+      <id>4</id>
+      <name>CE1</name>
+      <systemType>External</systemType>
+      <Layer2>MTP2</Layer2>
+      <TFOEnabled>0</TFOEnabled>
+    </IP>
+    <linkset speedType="UNKNOWN" idNumber="5" nodeA="1" nodeB="3">
+      <color>0</color>
+      <linksetType>Access</linksetType>
+    </linkset>
+    <linkset speedType="UNKNOWN" idNumber="6" nodeA="2" nodeB="4">
+      <color>0</color>
+      <linksetType>Access</linksetType>
+    </linkset>
+  </networkFile>
+  <sysConfigFile name="SGX4000_STP.cfg" path="/home/mgtsuser25/datafiles/SGX4000_STP.cfg" lastModifyDate="1235649870000">
+    <usedSlots>
+      <slot5 nodeType="IP">
+        <lic panelID="1" />
+        <lim panelID="1" links="1" />
+        <lic panelID="2" />
+        <lim panelID="2" links="1" />
+      </slot5>
+    </usedSlots>
+    <shelf>
+      <board boardCPU="1" boardType="PPCI">1</board>
+      <board boardCPU="1" boardType="PPCI">2</board>
+      <board boardCPU="1" boardType="PPCI">3</board>
+      <board boardCPU="1" boardType="PPCI">4</board>
+      <board boardCPU="1" boardType="PPCI">5</board>
+      <board boardCPU="1" boardType="PPCI">6</board>
+      <board boardCPU="1" boardType="PPCI">7</board>
+      <board boardCPU="1" boardType="PPCI">8</board>
+      <board boardCPU="1" boardType="PPCI">9</board>
+    </shelf>
+    <sysConfigData platform="WORKSTATION" host="p400">
+      <m5kslot1 present="1" type="PPCI">
+        <port1.1>
+          <slotNum>1</slotNum>
+          <port>1</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.1.0</networkAddress>
+        </port1.1>
+        <port1.2>
+          <slotNum>1</slotNum>
+          <port>2</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.2.0</networkAddress>
+        </port1.2>
+      </m5kslot1>
+      <m5kslot2 present="1" type="PPCI">
+        <port1.1>
+          <slotNum>2</slotNum>
+          <port>1</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.1.0</networkAddress>
+        </port1.1>
+        <port1.2>
+          <slotNum>2</slotNum>
+          <port>2</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.2.0</networkAddress>
+        </port1.2>
+      </m5kslot2>
+      <m5kslot3 present="1" type="PPCI">
+        <port1.1>
+          <slotNum>3</slotNum>
+          <port>1</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.1.0</networkAddress>
+        </port1.1>
+        <port1.2>
+          <slotNum>3</slotNum>
+          <port>2</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.2.0</networkAddress>
+        </port1.2>
+      </m5kslot3>
+      <m5kslot4 present="1" type="PPCI">
+        <port1.1>
+          <slotNum>4</slotNum>
+          <port>1</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.1.0</networkAddress>
+        </port1.1>
+        <port1.2>
+          <slotNum>4</slotNum>
+          <port>2</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.2.0</networkAddress>
+        </port1.2>
+      </m5kslot4>
+      <m5kslot5 present="1" type="PPCI" />
+      <m5kslot6 present="1" type="PPCI">
+        <port1.1>
+          <slotNum>6</slotNum>
+          <port>1</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.1.0</networkAddress>
+        </port1.1>
+        <port1.2>
+          <slotNum>6</slotNum>
+          <port>2</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.2.0</networkAddress>
+        </port1.2>
+      </m5kslot6>
+      <m5kslot7 present="1" type="PPCI">
+        <port1.1>
+          <slotNum>7</slotNum>
+          <port>1</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.1.0</networkAddress>
+        </port1.1>
+        <port1.2>
+          <slotNum>7</slotNum>
+          <port>2</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.2.0</networkAddress>
+        </port1.2>
+      </m5kslot7>
+      <m5kslot8 present="1" type="PPCI">
+        <port1.1>
+          <slotNum>8</slotNum>
+          <port>1</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.1.0</networkAddress>
+        </port1.1>
+        <port1.2>
+          <slotNum>8</slotNum>
+          <port>2</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.2.0</networkAddress>
+        </port1.2>
+      </m5kslot8>
+      <m5kslot9 present="1" type="PPCI">
+        <port1.1>
+          <slotNum>9</slotNum>
+          <port>1</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.1.0</networkAddress>
+        </port1.1>
+        <port1.2>
+          <slotNum>9</slotNum>
+          <port>2</port>
+          <timeslot />
+          <boardType>PPCI</boardType>
+          <type>PPCI_ETHERNET</type>
+          <portCpu>1</portCpu>
+          <linkSpeed>UNKNOWN</linkSpeed>
+          <aal_type>N/A</aal_type>
+          <cardPort>2.1</cardPort>
+          <channelDataType>n/a</channelDataType>
+          <portLink />
+          <linkRate />
+          <ipv6Enabled>No</ipv6Enabled>
+          <networkMask>255.255.255.0</networkMask>
+          <networkAddress>10.33.2.0</networkAddress>
+        </port1.2>
+      </m5kslot9>
+    </sysConfigData>
+  </sysConfigFile>
+</rootBeer>

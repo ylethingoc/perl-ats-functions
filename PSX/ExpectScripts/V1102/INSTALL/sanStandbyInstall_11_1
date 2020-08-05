@@ -1,0 +1,275 @@
+#!/usr/bin/expect
+
+#exp_internal -f  expect.log 0
+set systemTime [clock seconds]
+set time [clock format $systemTime -format %a_%b_%d_%Y_%H_%M_%S]
+append newfile "~/ats_repos/lib/perl/SonusQA/PSX/Logs/sanStandbyInstall_11_1_${time}.log"
+
+log_file -noappend "$newfile";
+
+set send_slow {1 0.02}
+
+set standbyip [lindex $argv 0]
+set standbyIlomIp [lindex $argv 1]
+set mpath [lindex $argv 2]
+
+set timeout 20
+
+spawn bash -c "ssh-keygen -f ~/.ssh/known_hosts -R $standbyip"
+
+spawn bash -c "scp  -o StrictHostKeyChecking=no ~/ats_repos/lib/perl/SonusQA/PSX/expectScripts/V1101/INSTALL/SANHA1101 root@$standbyip:/export/home/ssuser/SOFTSWITCH/BIN"
+
+expect -re ".*password:"
+send -s "sonus\r"
+
+sleep 10
+
+spawn ssh -o ServerAliveInterval=60  -o StrictHostKeyChecking=no Administrator@$standbyIlomIp;
+
+expect -re ".*password:"
+send -s "Sonus!@#\r"
+
+sleep 5
+
+expect "</>hpiLO->"
+
+sleep 5
+
+send -s "textcons\r"
+
+sleep 5
+
+expect {
+
+    timeout { send_user "textcons not launched\n"; exit 0 }
+
+    -re ".*Press.*Esc.*to return to the CLI Session"
+
+    }
+
+expect {
+
+      timeout { send_user "Login screen not found\n"; send -s "exit\r"; exp_continue }
+
+      -re "login:"
+
+      }
+
+set timeout 10
+
+send -s "root\r"
+
+sleep 5
+
+expect -re ".*Password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "echo net.ipv4.conf.all.rp_filter = 2 >> /etc/sysctl.conf\r"
+
+sleep 5
+
+
+send -s "sysctl -p\r"
+
+expect -re ".*]#"
+
+if {[string match "1" $mpath]} {
+
+    send -s "sed -i \'s/Mpath =.*/Mpath = 1/g\' /opt/sonus/platform/ConfigSan/multipathFlag.conf\r"
+
+    sleep 5
+
+    expect -re ".*]#"
+
+    send -s "sed -i \'s/SANIP =.*/SANIP =10.54.225.203, 10.54.225.205/g\' /opt/sonus/platform/ConfigSan/multipathFlag.conf\r"
+
+ }
+
+if {[string match "0" $mpath]} {
+
+    send -s "sed -i \'s/Mpath =.*/Mpath = 0/g\' /opt/sonus/platform/ConfigSan/multipathFlag.conf\r"
+
+    sleep 5
+
+    expect -re ".*]#"
+
+    send -s "sed -i \'s/SANIP =.*/SANIP =10.54.225.203/g\' /opt/sonus/platform/ConfigSan/multipathFlag.conf\r"
+
+ }
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "sed -i \'s/InitiatorName=.*/InitiatorName=iqn.1994-05.com.redhat:f56a8a7eba33/g\' /etc/iscsi/initiatorname.iscsi\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "reboot --r\r"
+
+set timeout 600
+
+expect {
+
+      timeout { send_user "Login screen not found\n"; }
+
+      -re "login:"
+
+      }
+
+set timeout 10
+
+send -s "root\r"
+
+sleep 5
+
+expect -re ".*Password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+
+send -s "cd /export/home/ssuser/SOFTSWITCH/BIN\r"
+
+expect  -re ".*]#"
+
+sleep 10
+
+set timeout 1800
+
+send -s "./configureHA.pl -inputfile SANHA1101\r"
+
+sleep 10
+
+expect {
+
+     timeout { send_user "Pattern not found - Please enter to continue,number to change prompt value,0 to exit\n"; exit 0 }
+
+	-re "Please enter to continue,number to change prompt value,0 to exit:.*"  { sleep 10; send -s "\r" }
+        
+    }
+
+sleep 10
+
+expect {
+
+    timeout { send_user "Pattern not found - Configuring SAN on G8 Server platform\n"; exit 0 }
+
+    -re "Configuring SAN on G8 Server platform"
+
+     }
+
+sleep 10
+
+set accounts [list ssuser oracle root admin ]
+
+array set passwords {ssuser ssuser oracle oracle root sonus admin admin}
+
+foreach accnt $accounts {
+
+   sleep 30
+
+    expect {
+
+        timeout { send_user "Did not get pattern - Enter new password for $accnt\n" ; exit 0 }
+
+      -timeout 3600  "Enter new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r"; send_user "NEW PASSWORD ENTERED FOR $accnt is $passwords($accnt)\n" }
+
+      }
+
+    sleep 30
+
+    expect {
+
+       timeout { send_user "Did not get pattern - Re-type new password for $accnt\n" ; exit 0 }
+
+      "Re-type new password for $accnt :" { sleep 10; send   -s "$passwords($accnt)\r" ;  send_user "NEW PASSWORD RE-ENTERED FOR $accnt is $passwords($accnt)\n"  }
+
+        }
+
+    sleep 10
+
+    expect {
+
+        timeout { send_user "Did not get pattern - Please confirm the above input\n" ; exit 0 }
+
+         -re "Please confirm the above input.*" { sleep 10; send   -s "y\r" ;  send_user "CONFIRMED INPUT FOR FOR $accnt\n" }
+
+        }
+
+    sleep 10
+
+    expect  {
+
+        timeout { send_user "Did not get pattern - Password for $accnt changed successfully\n" ; exit 0 }
+
+         -re "Password for $accnt changed successfully" { sleep 5; send_user "PASSWORD SUCCESSFULLY CHANGED FOR $accnt\n" }
+
+        }
+
+    sleep 10
+
+
+}
+
+set timeout 3600
+
+
+#expect {
+
+#            -re "Do you want to change the Generic key" { sleep 5 ; send  -s "N\r" }
+
+#            timeout { send_user "Did not get pattern - Do you want to change the Generic key\n" }
+
+#      }
+
+
+expect {
+
+      timeout { send_user "Login screen not found\n" }
+
+      -re "login:"
+
+      }
+
+set timeout 10
+
+send -s "root\r"
+
+sleep 5
+
+expect -re ".*Password:"
+
+send -s "sonus\r"
+
+sleep 5
+
+expect -re ".*]#"
+
+send -s "tail -f /export/home/ssuser/SOFTSWITCH/BIN/configureHA.pl.logstandby\r"
+
+sleep 600
+
+expect {
+
+     timeout { send_user "Pattern not found - HA configuration for standby completed\n";sleep 10;send -s "\x03"; exit 0 }
+
+    -re ".*HA configuration for standby completed.*" {sleep 10;send -s "\x03"}
+
+
+      }
+
+
+exit 1

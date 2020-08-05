@@ -1,0 +1,51 @@
+config
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ internalSignaling primary portId port3 interfaceName @@@CE0LONGNAME@@@-nif3 ipAddress @@@CE0INT0IP@@@ mask @@@CE0INT0NETMASK@@@ speed speed1000Mbps duplexMode full autoNegotiation on
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ internalSignaling primary state enable
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ internalSignaling primary mode in
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ internalSignaling secondary portId port3 interfaceName @@@CE0LONGNAME@@@-nif7 ipAddress @@@CE0INT1IP@@@ mask @@@CE0INT1NETMASK@@@ speed speed1000Mbps duplexMode full autoNegotiation on
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ internalSignaling secondary state enable
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ internalSignaling secondary mode in
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ externalSignaling primary portId port4 interfaceName @@@CE0LONGNAME@@@-nif4 ipAddress @@@CE0EXT0IP@@@ mask @@@CE0EXT0NETMASK@@@ speed speed1000Mbps duplexMode full autoNegotiation on
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ externalSignaling primary state enable
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ externalSignaling primary mode in
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ externalSignaling secondary portId port4 interfaceName @@@CE0LONGNAME@@@-nif8 ipAddress @@@CE0EXT1IP@@@ mask @@@CE0EXT1NETMASK@@@ speed speed1000Mbps duplexMode full autoNegotiation on
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ externalSignaling secondary state enable
+commit
+set networkInterface admin @@@CE0LONGNAME@@@ externalSignaling secondary mode in
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ internalSignaling primary portId port3 interfaceName @@@CE1LONGNAME@@@-nif3 ipAddress @@@CE1INT0IP@@@ mask @@@CE1INT0NETMASK@@@ speed speed1000Mbps duplexMode full autoNegotiation on
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ internalSignaling primary state enable
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ internalSignaling primary mode in
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ internalSignaling secondary portId port3 interfaceName @@@CE1LONGNAME@@@-nif7 ipAddress @@@CE1INT1IP@@@ mask @@@CE1INT1NETMASK@@@ speed speed1000Mbps duplexMode full autoNegotiation on
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ internalSignaling secondary state enable
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ internalSignaling secondary mode in
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ externalSignaling primary portId port4 interfaceName @@@CE1LONGNAME@@@-nif4 ipAddress @@@CE1EXT0IP@@@ mask @@@CE1EXT0NETMASK@@@ speed speed1000Mbps duplexMode full autoNegotiation on
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ externalSignaling primary state enable
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ externalSignaling primary mode in
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ externalSignaling secondary portId port4 interfaceName @@@CE1LONGNAME@@@-nif8 ipAddress @@@CE1EXT1IP@@@ mask @@@CE1EXT1NETMASK@@@ speed speed1000Mbps duplexMode full autoNegotiation on
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ externalSignaling secondary state enable
+commit
+set networkInterface admin @@@CE1LONGNAME@@@ externalSignaling secondary mode in
+commit
+exit
